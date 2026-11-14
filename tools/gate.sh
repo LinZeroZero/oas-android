@@ -3,6 +3,8 @@
 #
 #   bash tools/gate.sh            # 本地三项：①daemon 重编(按需) ②assembleDebug ⑤硬约束
 #   bash tools/gate.sh --device   # 额外再跑 ③cv_selftest ④四段保活（要装机 + root）
+#   bash tools/gate.sh --static   # 云端 CI 用：跳过①②③④（没有 Android SDK），
+#                                 # 只跑 bash -n tools/*.sh + ⑤硬约束/AGP
 #
 # 末行固定输出 `GATE: PASS` 或 `GATE: FAIL <项名>`，便于直接当提交前的判据。
 # 每项固定打印一行 `[n/5] OK|SKIP|FAIL ...`。
@@ -24,19 +26,25 @@ STAMP=poc/displayserver/build/.gate-java.sum
 CACHE_DEVICE=/data/user/0/$PKG/files/oas/cache
 
 DEVICE=0
+STATIC=0
 for arg in "$@"; do
     case "$arg" in
         --device) DEVICE=1 ;;
+        --static) STATIC=1 ;;
         -h|--help|help)
             sed -n '2,10p' "$0"
             exit 0
             ;;
         *)
-            echo "未知参数: $arg（支持 --device）" >&2
+            echo "未知参数: $arg（支持 --device / --static）" >&2
             exit 2
             ;;
     esac
 done
+# --static：云端 CI 没有 Android SDK，只跑语法 + 硬约束；两者互斥，static 优先
+if [ "$STATIC" = "1" ]; then
+    DEVICE=0
+fi
 
 FAILED=""
 
@@ -59,22 +67,28 @@ mkdir -p poc/displayserver/build build
 JAVA_SUM=$(find poc/displayserver/src -name '*.java' -print0 2>/dev/null |
     sort -z | xargs -0 cat 2>/dev/null | md5sum | cut -d' ' -f1)
 
-if [ -f "$STAMP" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$JAVA_SUM" ] && [ -f "$JAR" ]; then
-    echo "[1/5] SKIP  java 未变化（server.jar $(stat -c%s "$JAR" 2>/dev/null) B）"
+if [ "$STATIC" = "1" ]; then
+    echo "[1/5] SKIP  --static（云端无 Android SDK）"
 else
-    if bash tools/build_displayserver.sh >poc/displayserver/build/gate-build.log 2>&1; then
-        printf '%s\n' "$JAVA_SUM" >"$STAMP"
-        echo "[1/5] OK    server.jar $(stat -c%s "$JAR" 2>/dev/null) B"
+    if [ -f "$STAMP" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$JAVA_SUM" ] && [ -f "$JAR" ]; then
+        echo "[1/5] SKIP  java 未变化（server.jar $(stat -c%s "$JAR" 2>/dev/null) B）"
     else
-        echo "[1/5] FAIL  build_displayserver（见 poc/displayserver/build/gate-build.log）"
-        fail "daemon-build"
+        if bash tools/build_displayserver.sh >poc/displayserver/build/gate-build.log 2>&1; then
+            printf '%s\n' "$JAVA_SUM" >"$STAMP"
+            echo "[1/5] OK    server.jar $(stat -c%s "$JAR" 2>/dev/null) B"
+        else
+            echo "[1/5] FAIL  build_displayserver（见 poc/displayserver/build/gate-build.log）"
+            fail "daemon-build"
+        fi
     fi
 fi
 
 # ---------------------------------------------------------------- #
 # ② assembleDebug（必须用 ./gradlew；PATH 上的 gradle 4.31 会报 Task not found）
 # ---------------------------------------------------------------- #
-if ./gradlew :app:assembleDebug >build/gate-gradle.log 2>&1; then
+if [ "$STATIC" = "1" ]; then
+    echo "[2/5] SKIP  --static（云端无 Android SDK）"
+elif ./gradlew :app:assembleDebug >build/gate-gradle.log 2>&1; then
     if [ -f "$APK" ]; then
         echo "[2/5] OK    APK md5 $(md5sum "$APK" | cut -d' ' -f1) / $(stat -c%s "$APK") B"
     else
@@ -139,6 +153,22 @@ if [ "$DEVICE" = "1" ]; then
     root_shell "am force-stop $PKG"
 else
     echo "[4/5] SKIP  未加 --device"
+fi
+
+# ---------------------------------------------------------------- #
+# [S] 脚本语法检查（仅 --static；云端 CI 上这是唯一能跑的可执行检查）
+# ---------------------------------------------------------------- #
+if [ "$STATIC" = "1" ]; then
+    SYNTAX_BAD=""
+    for f in tools/*.sh; do
+        bash -n "$f" 2>/dev/null || SYNTAX_BAD="$SYNTAX_BAD $f"
+    done
+    if [ -z "$SYNTAX_BAD" ]; then
+        echo "[S]   OK    bash -n $(ls tools/*.sh 2>/dev/null | wc -l) 个脚本通过"
+    else
+        echo "[S]   FAIL  bash -n 语法错误:$SYNTAX_BAD"
+        fail "shell-syntax"
+    fi
 fi
 
 # ---------------------------------------------------------------- #
