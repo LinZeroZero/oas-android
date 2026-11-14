@@ -17,6 +17,8 @@ import java.util.Locale;
  *      app_process /system/bin org.onmyoji.oas.server.Main --selftest /path/outdir [w] [h] [dpi]
  * 3) 一次性抓帧（不用 socket，适合排查）
  *      app_process /system/bin org.onmyoji.oas.server.Main --once /path/out.raw [w] [h] [dpi] [waitMs]
+ * 4) 一次性执行一条 socket 命令（不 bind socket、不常驻；给 --wait N 则先等 N ms 再退出）：
+ *      app_process /system/bin org.onmyoji.oas.server.Main --cmd "kb run 3 3 3 -1 /path/report" --wait 20000
  */
 public final class Main {
 
@@ -26,6 +28,8 @@ public final class Main {
         String selftestDir = null;
         String oncePath = null;
         String launchComponent = null;
+        String cmdLine = null;   // --cmd <line>：不 bind socket，执行一条命令就退出
+        boolean waitGiven = false;
         boolean wakeLock = false; // ADR-0001 ②：--wakelock on 才持锁（默认 off，先不改默认行为）
         int w = 1280;
         int h = 720;
@@ -67,7 +71,11 @@ public final class Main {
                         dpi = Integer.parseInt(args[++i]);
                         break;
                     case "--wait":
+                        waitGiven = true;
                         waitMs = Integer.parseInt(args[++i]);
+                        break;
+                    case "--cmd":
+                        cmdLine = args[++i];
                         break;
                     default:
                         Ln.w("忽略未知参数: " + a);
@@ -105,6 +113,17 @@ public final class Main {
         }
 
         try {
+            if (cmdLine != null) {
+                // 一次性执行一条 socket 命令：不 bind socket、不常驻（为了不做 APK 也能验 kb run）。
+                // 后台线程（kb 段循环）挂在本进程上，--wait 用来给它留跑完的时间。
+                SocketServer server = new SocketServer(socket == null ? "" : socket);
+                System.out.println(server.exec(cmdLine));
+                System.out.flush();
+                if (waitGiven) {
+                    Thread.sleep(Math.max(0, waitMs));
+                }
+                System.exit(0);
+            }
             if (selftestDir != null) {
                 int code = selftest(selftestDir, w, h, dpi, waitMs, launchComponent, grabs);
                 System.exit(code);
@@ -114,7 +133,7 @@ public final class Main {
                 System.exit(code);
             }
             if (socket == null) {
-                System.err.println("必须指定 --socket 或 --selftest 或 --once");
+                System.err.println("必须指定 --socket 或 --selftest 或 --once 或 --cmd");
                 System.exit(2);
             }
             SocketServer server = new SocketServer(socket);

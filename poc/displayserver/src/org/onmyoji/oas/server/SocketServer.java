@@ -107,7 +107,12 @@ public final class SocketServer {
         }
     }
 
-    private String dispatch(String line) {
+    /** 供 `--cmd` 一次性执行用（不经过 socket），与 socket 里每行命令走同一条 dispatch。 */
+    public String exec(String line) {
+        return dispatch(line);
+    }
+
+    String dispatch(String line) {
         String[] a = line.trim().split("\\s+");
         if (a.length == 0 || a[0].isEmpty()) {
             return err("empty command");
@@ -228,14 +233,14 @@ public final class SocketServer {
         }
         String launchOut = "";
         if (launch.length() > 0) {
-            launchOut = exec(launch.toString().trim());
+            launchOut = sh(launch.toString().trim());
         }
         Thread.sleep(1200);
         long frames0 = engine.framesOf(id);
         Thread.sleep(ms);
         long frames1 = engine.framesOf(id);
         if (!returnComponent.isEmpty()) {
-            exec("am start -n " + returnComponent);
+            sh("am start -n " + returnComponent);
         }
         return String.format(Locale.US,
                 "{\"ok\":%b,\"frames0\":%d,\"frames1\":%d,\"delta\":%d,\"ms\":%d,\"launchOut\":\"%s\"}",
@@ -372,7 +377,7 @@ public final class SocketServer {
         return new LocalServerSocket(ABSTRACT_NAME);
     }
     /** 跑一条 shell 命令并返回合并输出（daemon 是 root，am/input 都能直接调）。 */
-    private static String exec(String cmd) {
+    private static String sh(String cmd) {
         try {
             Process p = new ProcessBuilder("/system/bin/sh", "-c", cmd)
                     .redirectErrorStream(true)
