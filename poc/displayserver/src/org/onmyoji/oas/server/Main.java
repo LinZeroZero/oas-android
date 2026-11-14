@@ -123,9 +123,6 @@ public final class Main {
     // 上一轮 C 段空洞 122s 就是这类静默失败的形态，所以宁可启动即失败。
     // ------------------------------------------------------------------ //
 
-    /** app 包名：出现在 ppid 的 cmdline 里就说明是 app 派生的。 */
-    private static final String APP_PACKAGE = "org.onmyoji.oas.android";
-
     /** 自检日志固定也落一份到 /data/local/tmp（root shell 可读，app 目录被卸载也还在）。 */
     private static final String TMP_LOG = "/data/local/tmp/oas-daemon.log";
 
@@ -141,17 +138,19 @@ public final class Main {
         int uid = android.os.Process.myUid();
         bootLog(pidfile, "envcheck: start pid=" + pid + " uid=" + uid);
 
-        // ① ppid 不能是 app 进程。
-        //    ppid==1 是正常形态（setsid 后由 init 收养）；这里之所以还要读 cmdline，
-        //    是因为从 app 直接 fork 时 ppid 就是 app 自己，靠 pid 数值看不出来。
+        // ① 父进程不能在 app 域里。
+        //    判定用 **父进程的 cgroup memory 行是否含 /apps/**，而不是 cmdline 里有没有包名：
+        //    常驻 su shell（SuShell.kt）与 `su -c "CLASSPATH=/data/user/0/org.onmyoji.oas.android/...
+        //    app_process ..."` 的命令行都会**合法地**包含 app 私有路径，用子串匹配会把生产
+        //    路径直接误杀。cgroup 才是「在不在 app 域」的精确语义。
+        //    ppid==1 是正常形态（setsid 后由 init 收养），直接通过。
         int ppid = readPpid(pid);
-        String ppidCmd = ppid > 0 ? readText("/proc/" + ppid + "/cmdline") : "";
-        ppidCmd = ppidCmd.replace('\0', ' ').trim();
-        bootLog(pidfile, "envcheck: ppid=" + ppid + " cmdline=" + ppidCmd);
-        if (ppid != 1 && ppidCmd.contains(APP_PACKAGE)) {
+        String ppidMemCgroup = ppid > 0 ? memoryCgroupOf("/proc/" + ppid + "/cgroup") : "";
+        bootLog(pidfile, "envcheck: ppid=" + ppid + " parent_memory_cgroup=" + ppidMemCgroup);
+        if (ppid != 1 && ppidMemCgroup.contains("/apps/")) {
             bad.append("ppid=").append(ppid)
-                    .append(" 是 app 进程派生（cmdline 含 ").append(APP_PACKAGE)
-                    .append("）→ 会落进 app cgroup 被 freezer 冻住");
+                    .append(" 在 app 域里（memory cgroup=").append(ppidMemCgroup.trim())
+                    .append("）→ 会跟着被 freezer 冻住");
         }
 
         // ② oom_score_adj 必须足够负。
@@ -165,18 +164,11 @@ public final class Main {
         }
 
         // ③ memory cgroup 不能在 /apps/ 下（那就是 app 的组，随 app 一起被冻）。
-        String cgroup = readText("/proc/self/cgroup");
-        String memLine = "";
-        for (String line : cgroup.split("\n")) {
-            if (line.contains(":memory:")) {
-                memLine = line;
-                break;
-            }
-        }
-        bootLog(pidfile, "envcheck: memory cgroup=" + memLine);
-        if (memLine.contains("/apps/")) {
+        String selfMem = memoryCgroupOf("/proc/self/cgroup");
+        bootLog(pidfile, "envcheck: self_memory_cgroup=" + selfMem);
+        if (selfMem.contains("/apps/")) {
             appendSep(bad);
-            bad.append("memory cgroup 在 /apps/ 下（").append(memLine.trim()).append("）");
+            bad.append("自己的 memory cgroup 在 /apps/ 下（").append(selfMem).append("）");
         }
 
         if (bad.length() > 0) {
@@ -184,6 +176,16 @@ public final class Main {
             return bad.toString();
         }
         bootLog(pidfile, "envcheck: OK（root 域 / ppid=" + ppid + " / oom=" + oomRaw + "）");
+        return "";
+    }
+
+    /** 取某个 cgroup 文件里的 memory 控制行（形如 `4:memory:/apps/uid_10331`）；空串=没找到。 */
+    private static String memoryCgroupOf(String cgroupPath) {
+        for (String line : readText(cgroupPath).split("\n")) {
+            if (line.contains(":memory:")) {
+                return line.trim();
+            }
+        }
         return "";
     }
 
