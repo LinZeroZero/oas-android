@@ -394,23 +394,21 @@ app 只保留 UI + 前台服务 + socket 客户端。
 - 隐患：`screen_off_timeout=1800000`，很可能是当时“还原”时把改后的值当成了原值。
 
 ## 十二、接力点（写手交棒用）
-> 制度见 `docs/WORKFLOW.md §1`：**一个写手位，可以换人，不可并行**。本节只保留**当前**接力点的最小上下文；换棒时整节替换，不追加历史。
+> 制度见 `docs/WORKFLOW.md §1`：**一个写手位，可以换人，不可并行**。换棒时本节整节替换，不追加历史；**详细内容写在交接包里**（`docs/handoff/`）。
 
-- **分支**：`main`，head = `753dd9e`（PR #9 已合并），工作区干净
-- **换棒判据**：上下文接近压缩阈值即换棒（256K × 0.7 ≈ 179K 词元，或消息数到 20 条触发总结）——触发压缩就等于丢掉前半棒约束
-- **写手位交接**：A（`519dbd40…`，上下文 97%，已定格）→ **A2（`8833100c-271d-4988-b752-ebce0f2321ca`，已完成 BG-19，已定格）** → **当前 A3（`ca2b0219-0992-4e48-996d-dc9fcf071460`，标题 `OAS-A3 写手（BG-23 --socket 真参数）`）**
-- **上一棒交付（BG-19，已合并）**：`kb run <a> <b> <c> <displayId> <reportPath>`（daemon 侧三段计时 + 心跳判读 + txt/json 报告）、`SocketServer.exec(String)`、`Main --cmd/--wait`
-  - 真机：`kb run 5 5 5 -1 …` → `n/4 = 4/4（全过）`；`kb run 0 0 0` → `0/4`（fail-closed）
-  - 证据：`docs/evidence/20261114-2330-BG-19-daemon-kb-run.md`
-  - 复核命令：`cp app/src/main/assets/server/server.jar /data/local/tmp/kbtest.jar && CLASSPATH=/data/local/tmp/kbtest.jar /system/bin/app_process /system/bin org.onmyoji.oas.server.Main --cmd 'kb run 5 5 5 -1 /data/local/tmp/kb/r.txt' --wait 25000`（跑完删 `/data/local/tmp/kbtest.jar` 与 `/data/local/tmp/kb/`）
-- **本棒任务（BG-23）**：`SocketServer.openServer(String path)` 无条件 `new LocalServerSocket(ABSTRACT_NAME)`，`--socket` 参数是假的 → 第二个实例必报 `Address already in use`，`sFileSocket` 恒 false（`chmod666` 与文件 socket 分支是死代码）。要让 `--socket <name>` 真正生效，并在 `help` 里写清楚抽象名 vs 文件路径两种形态
+- **分支**：`main`，head = `507574e`（PR #12 已合并），工作区干净
+- **换棒判据**：上下文接近压缩阈值即换棒（256K × 0.7 ≈ 179K 词元，或消息数到 20 条触发总结）
+- **当前交接包**：`docs/handoff/20261115-0110-bg21-c-phase.md`（七要素，第 7 节启动动作已实测可跑）
+- **写手位交接**：A（`519dbd40…`，97% 定格）→ A2（`8833100c-271d-4988-b752-ebce0f2321ca`，BG-19，定格）→ A3（`ca2b0219-0992-4e48-996d-dc9fcf071460`，BG-23，定格）→ **当前 A4（`3464a2d7-9d14-4b05-9ee2-35dcd7f6e265`，标题 `OAS-A4 写手（BG-21 C 段真测）`）**
+- **本棒任务（BG-21）**：真熄屏 65 秒下 daemon 心跳是否停跳 —— 两组对照（`--wakelock on` / `off`）+ `suspend_stats` 差值 + 证据落 `docs/evidence/`
 - **已知坑**：
   - 心跳每行格式固定 `{"ts":ms,"displayId":id,"frames":n,"pid":p}`（`Heartbeat.java`），别自创字段
   - `displayId=-1` 时 `frames` 恒为 -1，不能用来判「画面在动」；要判渲染必须在真实虚拟屏 displayId 上跑
   - daemon 在 root 域，日志必须双写 `/data/local/tmp/oas-daemon.log` + app cache
-  - 改完 jar 必须重跑 `tools/build_displayserver.sh` 覆盖 `app/src/main/assets/server/server.jar`，否则装上去的还是旧逻辑
-  - 子会话**没有工作区附件**，接手时必须由主 AI 在指令里贴绝对路径 `/data/user/0/com.ai.assistance.operit/files/workspace/8868caab-ae27-4814-9992-11fb83225a35`，否则它会去 `/sdcard` 下瞎找
-  - 从 proot / `super_admin:terminal` **连不上抽象 socket**（`/proc/net/unix` Permission denied、`ConnectionRefused`）；设备侧联调只能用 `super_admin:shell` 起 `app_process` 或走 `--cmd`
+  - 改完 jar 必须重跑 `tools/build_displayserver.sh` 覆盖 `app/src/main/assets/server/server.jar`
+  - 子会话**没有工作区附件**，主 AI 下指令必须贴绝对路径 `/data/user/0/com.ai.assistance.operit/files/workspace/8868caab-ae27-4814-9992-11fb83225a35`，否则它会去 `/sdcard` 下瞎找
+  - **工具分工**：工作区/git 用 `super_admin:terminal`（proot），摸设备用 `super_admin:shell`（root）；proot 里读 `/sys/power/*` 是 `Permission denied`（实测）
+  - 从 proot 连不上抽象 socket（`/proc/net/unix` Permission denied、`ConnectionRefused`）
 
 ## 十三、许可
 
