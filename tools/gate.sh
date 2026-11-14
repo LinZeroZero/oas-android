@@ -115,16 +115,25 @@ if [ "$DEVICE" = "1" ]; then
         if [ -n "$RESULT" ]; then
             PASSED=$(printf '%s' "$RESULT" | grep -oE '"passed":[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1)
             TOTAL=$(printf '%s' "$RESULT" | grep -oE '"total":[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1)
-            if [ -n "$PASSED" ] && [ "$PASSED" = "$TOTAL" ] && [ "${TOTAL:-0}" -ge 30 ]; then
-                CV_OK=1
-            fi
+            # set -u 下 `[ "$PASSED" = "$TOTAL" ]` 在两者未赋值时会直接杀掉脚本，
+            # 连末行 GATE: 都打不出来（BG-13）。所以先补默认值再做数值比较。
+            P=${PASSED:-0}
+            T=${TOTAL:-0}
+            case "$P$T" in
+                *[!0-9]* | "") ;; # 非数字 → 保持 CV_OK=0，不参与比较
+                *)
+                    if [ "$T" -ge 30 ] && [ "$P" = "$T" ]; then
+                        CV_OK=1
+                    fi
+                    ;;
+            esac
             break
         fi
     done
     if [ "$CV_OK" = "1" ]; then
-        echo "[3/5] OK    cv_selftest $PASSED/$TOTAL"
+        echo "[3/5] OK    cv_selftest ${PASSED:-0}/${TOTAL:-0}"
     else
-        echo "[3/5] FAIL  cv_selftest ${PASSED:-?}/${TOTAL:-?}（见 $CACHE_DEVICE/cv_selftest.txt）"
+        echo "[3/5] FAIL  cv_selftest ${PASSED:-0}/${TOTAL:-0}（见 $CACHE_DEVICE/cv_selftest.txt）"
         fail "cv_selftest"
     fi
 else
@@ -139,12 +148,29 @@ if [ "$DEVICE" = "1" ]; then
     root_shell "rm -f $CACHE_DEVICE/keepalive_poc.txt $CACHE_DEVICE/keepalive_hb.jsonl"
     root_shell "am force-stop $PKG"
     root_shell "am start -n $PKG/.MainActivity --ei keepalive 1 --ei kb_a 30 --ei kb_b 60 --ei kb_c 60" >/dev/null
-    # 20s 预热 + 30 + 60 + 60 + 15 + 收尾余量
-    sleep 240
-    REPORT=$(root_shell "cat $CACHE_DEVICE/keepalive_poc.txt")
+    # 轮询等待报告定稿（BG-13：原来固定 sleep 240 只剩 55s 余量，机器一忙就误报）。
+    # 判定依据：报告存在、含「通过 X/Y」且**不再出现「（进行中）」**（那是渐进报告的标记）。
+    KEEPALIVE_TIMEOUT=420
+    WAITED=0
+    DONE=0
+    REPORT=""
+    while [ "$WAITED" -lt "$KEEPALIVE_TIMEOUT" ]; do
+        sleep 5
+        WAITED=$((WAITED + 5))
+        REPORT=$(root_shell "cat $CACHE_DEVICE/keepalive_poc.txt")
+        if [ -n "$REPORT" ] &&
+            printf '%s' "$REPORT" | grep -q '通过 [0-9][0-9]*/[0-9][0-9]*' &&
+            ! printf '%s' "$REPORT" | grep -q '进行中'; then
+            DONE=1
+            break
+        fi
+    done
     SCORE=$(printf '%s' "$REPORT" | grep -oE '通过 [0-9]+/[0-9]+' | head -1 | tr -d ' ')
     HOLE=$(printf '%s' "$REPORT" | grep -oE '空洞 [0-9]+ms' | grep -oE '[0-9]+' | sort -rn | head -1)
-    if [ "$SCORE" = "通过4/4" ] && [ -n "$HOLE" ] && [ "$HOLE" -lt 5000 ]; then
+    if [ "$DONE" != "1" ]; then
+        echo "[4/5] FAIL  四段报告 ${KEEPALIVE_TIMEOUT}s 内未定稿（${SCORE:-无报告}，末态 $WAITED s）"
+        fail "keepalive-timeout"
+    elif [ "$SCORE" = "通过4/4" ] && [ -n "${HOLE:-}" ] && [ "${HOLE:-0}" -lt 5000 ]; then
         echo "[4/5] OK    四段 4/4，C 段最大空洞 ${HOLE}ms"
     else
         echo "[4/5] FAIL  四段 ${SCORE:-无报告}，C 段最大空洞 ${HOLE:-n/a}ms"
@@ -183,6 +209,11 @@ strip_comments() {
     {
         line = $0
         out = ""
+        # 整行注释：shell(#) / yml(#) 直接丢掉（Kotlin/Java/xml 里不会以 # 开头）
+        if (!block && !xml && line ~ /^[[:space:]]*#/) {
+            print ""
+            next
+        }
         while (1) {
             if (xml) {
                 p = index(line, "-->")
@@ -218,7 +249,14 @@ strip_comments() {
 
 STRIP=build/gate-strip
 rm -rf "$STRIP"
-find app/src poc/displayserver/src -type f \( -name '*.kt' -o -name '*.java' -o -name '*.xml' \) 2>/dev/null |
+# 扫描范围（BG-13：原来只扫 app/src 与 poc 的源码，漏了 tools/、*.gradle.kts、CI yml）。
+# vendor/ 是上游代码（GPL 第三方），不参与本项目硬约束检查，见 docs/UPSTREAM.md。
+{
+    find app/src poc/displayserver/src tools .github -type f \
+        \( -name '*.kt' -o -name '*.java' -o -name '*.xml' -o -name '*.kts' \
+        -o -name '*.gradle' -o -name '*.yml' -o -name '*.yaml' -o -name '*.sh' \) 2>/dev/null
+    find . -maxdepth 1 -type f \( -name '*.gradle' -o -name '*.gradle.kts' \) 2>/dev/null
+} | grep -v '^\(\./\)\{0,1\}vendor/' |
     while read -r f; do
         dst="$STRIP/$f"
         mkdir -p "$(dirname "$dst")"
@@ -226,8 +264,19 @@ find app/src poc/displayserver/src -type f \( -name '*.kt' -o -name '*.java' -o 
     done
 
 HITS=""
-for pat in 'wm size[^a-zA-Z"[:space:]]*[0-9]' 'wm size -[0-9]' 'BootReceiver' \
-    'JobScheduler' 'AlarmManager' 'RECEIVE_BOOT_COMPLETED'; do
+# wm size 的三种违规写法必须分开匹配（BG-13）：
+#   ① 带空格再跟数字：`wm size 1280x720`
+#   ② 带空格再跟负数：`wm size -100x100`
+#   ③ 带 reset：`wm size reset`
+# 纯查询 `wm size`（后面没有参数）不应命中，所以都要求 `[[:space:]]+` 后才判。
+for pat in \
+    'wm size[[:space:]]+[0-9]' \
+    'wm size[[:space:]]+-[0-9]' \
+    'wm size[[:space:]]+reset' \
+    'BootReceiver' \
+    'JobScheduler' \
+    'AlarmManager' \
+    'RECEIVE_BOOT_COMPLETED'; do
     out=$(grep -rInE "$pat" "$STRIP" 2>/dev/null)
     if [ -n "$out" ]; then
         HITS="$HITS
