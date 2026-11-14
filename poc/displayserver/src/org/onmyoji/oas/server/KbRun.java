@@ -392,7 +392,7 @@ public final class KbRun {
     }
 
     private static long needLines(int seconds) {
-        return (long) Math.ceil(seconds * 0.8);
+        return Math.max(1L, (long) Math.ceil(seconds * 0.8));
     }
 
     /** txt 里的四段表格 + n/4。 */
