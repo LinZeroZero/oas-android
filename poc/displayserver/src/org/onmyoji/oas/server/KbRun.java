@@ -218,7 +218,21 @@ public final class KbRun {
         long framesFirst = -1;
         long framesLast = -1;
         long framesDelta = -1;
+        /** 该段是否真的跑过；false = 未运行（skip），skip 一律不算 pass。 */
+        boolean ran = true;
         boolean pass;
+
+        PhaseStats() {
+        }
+
+        /** 没跑过的段：compare 时一律 fail，表格里打 -。 */
+        static PhaseStats skipped(String name) {
+            PhaseStats st = new PhaseStats();
+            st.name = name;
+            st.ran = false;
+            st.pass = false;
+            return st;
+        }
     }
 
     /**
@@ -230,30 +244,51 @@ public final class KbRun {
         if (reportPath != null && !reportPath.isEmpty()) {
             readSamples(reportPath + ".jsonl", samples);
         }
-        PhaseStats[] out = new PhaseStats[phases.size() + 1];
-        // 空 phases = 致命异常发生在第一段之前（一段都没跑）→ 不是「全过」，是「全没过」
-        boolean allPass = !phases.isEmpty();
+        // 分母恒为 4（A / B / C / TOTAL）：下游门禁按 n/4 解析，不能随异常变形。
+        // 没跑到的段显式 skip，skip 一律不算 pass（空 phases ⇒ 全 false）。
+        PhaseStats[] out = new PhaseStats[4];
         long totalSec = 0;
         long totalStart = Long.MAX_VALUE;
         long totalEnd = Long.MIN_VALUE;
-        for (int i = 0; i < phases.size(); i++) {
-            Phase p = phases.get(i);
-            PhaseStats st = window(p.name, p.seconds, p.startTs, p.endTs, samples);
+        boolean allPass = true;
+        for (int i = 0; i < PHASE_NAMES.length; i++) {
+            String name = PHASE_NAMES[i];
+            Phase p = findPhase(phases, name);
+            if (p == null) {
+                out[i] = PhaseStats.skipped(name);
+                allPass = false;
+                continue;
+            }
+            PhaseStats st = window(name, p.seconds, p.startTs, p.endTs, samples);
             out[i] = st;
             allPass = allPass && st.pass;
             totalSec += p.seconds;
             totalStart = Math.min(totalStart, p.startTs);
             totalEnd = Math.max(totalEnd, p.endTs);
         }
-        if (phases.isEmpty()) {
-            totalStart = 0L;
-            totalEnd = 0L;
+        PhaseStats total;
+        if (totalStart <= totalEnd) {
+            total = window("TOTAL", (int) totalSec, totalStart, totalEnd, samples);
+            total.pass = allPass;
+        } else {
+            total = PhaseStats.skipped("TOTAL");
         }
-        PhaseStats total = window("TOTAL", (int) totalSec, totalStart, totalEnd, samples);
-        total.pass = allPass;
-        out[out.length - 1] = total;
+        out[3] = total;
         Ln.i("kb analyze: rows=" + out.length + " hbLines=" + samples.size() + " display=" + displayId);
         return out;
+    }
+
+    /** 段名固定为 A/B/C，按名字查（顺序由 out 数组保证，不依赖 phases 的追加顺序）。 */
+    private static final String[] PHASE_NAMES = {"A", "B", "C"};
+
+    private static Phase findPhase(List<Phase> phases, String name) {
+        for (int i = 0; i < phases.size(); i++) {
+            Phase p = phases.get(i);
+            if (p != null && name.equals(p.name)) {
+                return p;
+            }
+        }
+        return null;
     }
 
     /** 读心跳 JSONL（只取 ts / frames；坏行跳过，不因一行脏数据废掉整份报告）。 */
@@ -369,6 +404,11 @@ public final class KbRun {
         int pass = 0;
         for (int i = 0; i < stats.length; i++) {
             PhaseStats s = stats[i];
+            if (!s.ran) {
+                sb.append(String.format(Locale.US, "%-6s %5s %6s %6s %8s %20s  %s%n",
+                        s.name, "-", "-", "-", "-", "-", "skip（未运行）"));
+                continue;
+            }
             if (s.pass) {
                 pass++;
             }
@@ -409,10 +449,10 @@ public final class KbRun {
                 sb.append(',');
             }
             sb.append(String.format(Locale.US,
-                    "{\"name\":\"%s\",\"seconds\":%d,\"startTs\":%d,\"endTs\":%d,\"durMs\":%d,"
+                    "{\"name\":\"%s\",\"ran\":%b,\"seconds\":%d,\"startTs\":%d,\"endTs\":%d,\"durMs\":%d,"
                             + "\"lines\":%d,\"expectLines\":%d,\"maxGapMs\":%d,"
                             + "\"framesFirst\":%d,\"framesLast\":%d,\"framesDelta\":%d,\"pass\":%b}",
-                    s.name, s.seconds, s.startTs, s.endTs, s.endTs - s.startTs,
+                    s.name, s.ran, s.seconds, s.startTs, s.endTs, s.endTs - s.startTs,
                     s.lines, needLines(s.seconds), s.maxGapMs,
                     s.framesFirst, s.framesLast, s.framesDelta, s.pass));
         }
