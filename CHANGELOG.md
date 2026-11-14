@@ -17,11 +17,14 @@
 - `kb run <a> <b> <c> <displayId> <reportPath>`：daemon 侧三段计时 + 心跳判读（lines / maxGap / framesΔ）+ txt/json 报告与 `n/4` 判定
 - daemon `--cmd <line>` / `--wait <ms>`：一次性执行 socket 命令后退出（不 bind、不常驻），不装 APK 也能验 daemon 行为
 - `docs/evidence/` 开始留痕：首批真机证据见 `20261114-2330-BG-19-daemon-kb-run.md`
+- `docs/handoff/` 交接包目录：七要素模板 + 两条合格判据，写手换棒的第一动作是读交接包并执行 §7「启动动作」
 
 ### Changed
 - wake lock 实现由 `PowerManager` 改为内核 sysfs（`app_process` 下 `getSystemContext()` 为 null，`getSystemService` 必然 NPE）
 - `kb` 判据改为 fail-closed：0 秒段不许空过、缺段标 `skip` 且不算 pass、`n/4` 分母恒 4、`need` 下限取 1（表格显示与判据一致）
 - daemon 环境判据不用 cmdline 子串（`su -c` 起 shell 时会合法带包名，会误杀生产路径），改读父进程 cgroup
+- BG-21 改为**预实验（pilot）→ 正式测**两段式：先验证「能不能观测到整机 suspend」，再谈 60s 心跳是否停跳
+- `docs/WORKFLOW.md §1` 记录已知限制：**会话分组无法由 AI 设定**，直改 Room 库会被 App 运行时写回（杀进程无效），故用 `OAS-` 标题前缀识别接力会话
 
 ### Fixed
 - `--wait` 由固定 sleep 改为轮询 `kb status`；段窗口用前一个心跳 `ts` 衔接，段首空洞不再被低估
