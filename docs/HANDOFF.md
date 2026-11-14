@@ -394,18 +394,21 @@ app 只保留 UI + 前台服务 + socket 客户端。
 - 隐患：`screen_off_timeout=1800000`，很可能是当时“还原”时把改后的值当成了原值。
 
 ## 十二、接力点（写手交棒用）
-
 > 制度见 `docs/WORKFLOW.md §1`：**一个写手位，可以换人，不可并行**。本节只保留**当前**接力点的最小上下文；换棒时整节替换，不追加历史。
 
-- **分支**：`feat/kb-run`，head = `c44ea59`（已 push），工作区干净
-- **任务**：BG-19 —— `kb run <a> <b> <c> <displayId> <reportPath>`，把四段 phase driver 从 app 移进 daemon
-- **已完成**：`poc/displayserver/src/org/onmyoji/oas/server/KbRun.java` 骨架（daemon 侧 A/B/C 三段计时 + 兜底心跳 + 写 txt 报告）；`SocketServer.java` 新增 `case "kb"` 分发 `kb run|status|stop`；`tools/build_displayserver.sh` 编译通过
-- **下一步**：解析心跳 JSONL，按段切出 maxGap / 行数 / frames 增量，出 `n/4` 判定与 json 报告；之后补 D 段（唤醒 + 定向点击，默认关）
+- **分支**：`main`，head = `753dd9e`（PR #9 已合并），工作区干净
+- **写手位交接**：A（`519dbd40…`，上下文 97%，已定格）→ **A2（`8833100c-271d-4988-b752-ebce0f2321ca`，已完成 BG-19，已定格）** → **当前 A3（`ca2b0219-0992-4e48-996d-dc9fcf071460`，标题 `OAS-A3 写手（BG-23 --socket 真参数）`）**
+- **上一棒交付（BG-19，已合并）**：`kb run <a> <b> <c> <displayId> <reportPath>`（daemon 侧三段计时 + 心跳判读 + txt/json 报告）、`SocketServer.exec(String)`、`Main --cmd/--wait`
+  - 真机：`kb run 5 5 5 -1 …` → `n/4 = 4/4（全过）`；`kb run 0 0 0` → `0/4`（fail-closed）
+  - 证据：`docs/evidence/20261114-2330-BG-19-daemon-kb-run.md`
+  - 复核命令：`cp app/src/main/assets/server/server.jar /data/local/tmp/kbtest.jar && CLASSPATH=/data/local/tmp/kbtest.jar /system/bin/app_process /system/bin org.onmyoji.oas.server.Main --cmd 'kb run 5 5 5 -1 /data/local/tmp/kb/r.txt' --wait 25000`（跑完删 `/data/local/tmp/kbtest.jar` 与 `/data/local/tmp/kb/`）
+- **本棒任务（BG-23）**：`SocketServer.openServer(String path)` 无条件 `new LocalServerSocket(ABSTRACT_NAME)`，`--socket` 参数是假的 → 第二个实例必报 `Address already in use`，`sFileSocket` 恒 false（`chmod666` 与文件 socket 分支是死代码）。要让 `--socket <name>` 真正生效，并在 `help` 里写清楚抽象名 vs 文件路径两种形态
 - **已知坑**：
   - 心跳每行格式固定 `{"ts":ms,"displayId":id,"frames":n,"pid":p}`（`Heartbeat.java`），别自创字段
-  - `cmdHeartbeat` 要求 displayId 存在或传 `-1`；传 `-1` 时 `frames` 恒为 -1，不能用来判「画面在动」
+  - `displayId=-1` 时 `frames` 恒为 -1，不能用来判「画面在动」；要判渲染必须在真实虚拟屏 displayId 上跑
   - daemon 在 root 域，日志必须双写 `/data/local/tmp/oas-daemon.log` + app cache
   - 改完 jar 必须重跑 `tools/build_displayserver.sh` 覆盖 `app/src/main/assets/server/server.jar`，否则装上去的还是旧逻辑
+  - 从 proot / `super_admin:terminal` **连不上抽象 socket**（`/proc/net/unix` Permission denied、`ConnectionRefused`）；设备侧联调只能用 `super_admin:shell` 起 `app_process` 或走 `--cmd`
 
 ## 十三、许可
 

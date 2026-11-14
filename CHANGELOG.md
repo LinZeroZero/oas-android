@@ -14,12 +14,17 @@
 - daemon `--wakelock on|off`：写内核 `/sys/power/wake_lock`（tag `oas:daemon`）持 PARTIAL 语义锁
 - reaper 守护子进程：daemon 以任何方式死亡后自动 `wake_unlock`（因 `kill -TERM` 不执行 shutdown hook）
 - `docs/adr/0001-daemon-owns-automation.md`：自动化执行体归 root daemon 的架构决策记录
+- `kb run <a> <b> <c> <displayId> <reportPath>`：daemon 侧三段计时 + 心跳判读（lines / maxGap / framesΔ）+ txt/json 报告与 `n/4` 判定
+- daemon `--cmd <line>` / `--wait <ms>`：一次性执行 socket 命令后退出（不 bind、不常驻），不装 APK 也能验 daemon 行为
+- `docs/evidence/` 开始留痕：首批真机证据见 `20261114-2330-BG-19-daemon-kb-run.md`
 
 ### Changed
 - wake lock 实现由 `PowerManager` 改为内核 sysfs（`app_process` 下 `getSystemContext()` 为 null，`getSystemService` 必然 NPE）
+- `kb` 判据改为 fail-closed：0 秒段不许空过、缺段标 `skip` 且不算 pass、`n/4` 分母恒 4、`need` 下限取 1（表格显示与判据一致）
 - daemon 环境判据不用 cmdline 子串（`su -c` 起 shell 时会合法带包名，会误杀生产路径），改读父进程 cgroup
 
 ### Fixed
+- `--wait` 由固定 sleep 改为轮询 `kb status`；段窗口用前一个心跳 `ts` 衔接，段首空洞不再被低估
 - 文档与实现不一致：ADR-0001 §Decision 第 2 条与 `docs/HANDOFF.md`/`docs/WORKFLOW.md` 的 tag 名同步为当前实现与 `v0.2.0-b1`
 
 ## [0.2.0-b1] - 2026-11-14
