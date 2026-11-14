@@ -32,6 +32,7 @@ public final class SocketServer {
     private final String path;
     private final DisplayEngine engine = new DisplayEngine();
     private final Heartbeat heartbeat = new Heartbeat();
+    private final KbRun kbRun = new KbRun(engine, heartbeat);
     private volatile boolean running = true;
 
     /** true = 文件系统 socket（可 chmod、可被 app 直接连）；false = 退到抽象命名空间。 */
@@ -120,6 +121,8 @@ public final class SocketServer {
                             esc(DisplayEngine.initError()));
                 case "hb":
                     return cmdHeartbeat(a);
+                case "kb":
+                    return cmdKb(a);
                 case "create":
                     return cmdCreate(a);
                 case "mirror":
@@ -275,6 +278,45 @@ public final class SocketServer {
             return heartbeat.statusJson();
         }
         return err("unknown hb sub: " + sub);
+    }
+
+    /**
+     * kb run &lt;aSec&gt; &lt;bSec&gt; &lt;cSec&gt; &lt;displayId&gt; &lt;reportPath&gt; | kb status | kb stop
+     *
+     * 驱动器放 daemon 侧（ADR-0001 ④）：app 一进后台就被冻住，只有 daemon 能按段推进。
+     * 本步只做骨架（计时 + 报告），屏幕动作用下一步。
+     */
+    private String cmdKb(String[] a) {
+        if (a.length < 2) {
+            return err("usage: kb run <aSec> <bSec> <cSec> <displayId> <reportPath> | kb status | kb stop");
+        }
+        String sub = a[1];
+        if ("run".equals(sub)) {
+            if (a.length < 7) {
+                return err("usage: kb run <aSec> <bSec> <cSec> <displayId> <reportPath>");
+            }
+            int aSec;
+            int bSec;
+            int cSec;
+            int displayId;
+            try {
+                aSec = Integer.parseInt(a[2]);
+                bSec = Integer.parseInt(a[3]);
+                cSec = Integer.parseInt(a[4]);
+                displayId = Integer.parseInt(a[5]);
+            } catch (Throwable t) {
+                return err("参数不是整数: " + t);
+            }
+            String reportPath = a[6];
+            return kbRun.run(aSec, bSec, cSec, displayId, reportPath);
+        }
+        if ("status".equals(sub)) {
+            return kbRun.statusJson();
+        }
+        if ("stop".equals(sub)) {
+            return kbRun.stop();
+        }
+        return err("unknown kb sub: " + sub);
     }
 
     private String cmdList() {
