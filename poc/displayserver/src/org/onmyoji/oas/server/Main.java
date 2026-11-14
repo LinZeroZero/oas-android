@@ -79,6 +79,14 @@ public final class Main {
         Ln.i("bootstrap: pid=" + android.os.Process.myPid()
                 + " uid=" + android.os.Process.myUid()
                 + " workarounds=" + (Workarounds.initError().isEmpty() ? "ok" : Workarounds.initError()));
+
+        // ADR-0001 ①：daemon 必须留在 root 域。任何一条不满足就**拒绝启动**，不要静默降级。
+        String envErr = checkEnv(pidfile);
+        if (!envErr.isEmpty()) {
+            System.err.println("BOOTSTRAP-REJECTED " + envErr);
+            System.exit(3);
+        }
+
         if (pidfile != null) {
             writePid(pidfile);
         }
@@ -102,6 +110,163 @@ public final class Main {
             Ln.e("main 异常", t);
             t.printStackTrace();
             System.exit(1);
+        }
+    }
+
+    // ------------------------------------------------------------------ //
+    // 启动自检（BG-17 / ADR-0001 ①）
+    //
+    // 为什么必须查：daemon 的价值全在「app_process 由 init 收养、不在 app 的
+    // cgroup 里、oom_score_adj=-1000」——所以 Hans/cached-app freezer 冻不到它。
+    // 哪天有人图省事从 app 里直接 fork（或忘了 setsid），它会照样跑起来、
+    // socket 照样通，但会被静默冻住：心跳断、帧不动，而且**没有任何报错**。
+    // 上一轮 C 段空洞 122s 就是这类静默失败的形态，所以宁可启动即失败。
+    // ------------------------------------------------------------------ //
+
+    /** app 包名：出现在 ppid 的 cmdline 里就说明是 app 派生的。 */
+    private static final String APP_PACKAGE = "org.onmyoji.oas.android";
+
+    /** 自检日志固定也落一份到 /data/local/tmp（root shell 可读，app 目录被卸载也还在）。 */
+    private static final String TMP_LOG = "/data/local/tmp/oas-daemon.log";
+
+    /** oom_score_adj 门槛：实测 root daemon 是 -1000；> -900 说明没拿到 root 域待遇。 */
+    private static final int OOM_ADJ_MAX = -900;
+
+    /**
+     * 检查 + 记录；返回空串表示通过，否则返回人类可读的原因（调用方据此 exit 3）。
+     */
+    private static String checkEnv(String pidfile) {
+        StringBuilder bad = new StringBuilder();
+        int pid = android.os.Process.myPid();
+        int uid = android.os.Process.myUid();
+        bootLog(pidfile, "envcheck: start pid=" + pid + " uid=" + uid);
+
+        // ① ppid 不能是 app 进程。
+        //    ppid==1 是正常形态（setsid 后由 init 收养）；这里之所以还要读 cmdline，
+        //    是因为从 app 直接 fork 时 ppid 就是 app 自己，靠 pid 数值看不出来。
+        int ppid = readPpid(pid);
+        String ppidCmd = ppid > 0 ? readText("/proc/" + ppid + "/cmdline") : "";
+        ppidCmd = ppidCmd.replace('\0', ' ').trim();
+        bootLog(pidfile, "envcheck: ppid=" + ppid + " cmdline=" + ppidCmd);
+        if (ppid != 1 && ppidCmd.contains(APP_PACKAGE)) {
+            bad.append("ppid=").append(ppid)
+                    .append(" 是 app 进程派生（cmdline 含 ").append(APP_PACKAGE)
+                    .append("）→ 会落进 app cgroup 被 freezer 冻住");
+        }
+
+        // ② oom_score_adj 必须足够负。
+        String oomRaw = readText("/proc/self/oom_score_adj").trim();
+        int oom = parseIntOr(oomRaw, 1000);
+        bootLog(pidfile, "envcheck: oom_score_adj=" + oomRaw);
+        if (oom > OOM_ADJ_MAX) {
+            appendSep(bad);
+            bad.append("oom_score_adj=").append(oomRaw.isEmpty() ? "未知" : oomRaw)
+                    .append("（要求 <= ").append(OOM_ADJ_MAX).append("）");
+        }
+
+        // ③ memory cgroup 不能在 /apps/ 下（那就是 app 的组，随 app 一起被冻）。
+        String cgroup = readText("/proc/self/cgroup");
+        String memLine = "";
+        for (String line : cgroup.split("\n")) {
+            if (line.contains(":memory:")) {
+                memLine = line;
+                break;
+            }
+        }
+        bootLog(pidfile, "envcheck: memory cgroup=" + memLine);
+        if (memLine.contains("/apps/")) {
+            appendSep(bad);
+            bad.append("memory cgroup 在 /apps/ 下（").append(memLine.trim()).append("）");
+        }
+
+        if (bad.length() > 0) {
+            bootLog(pidfile, "envcheck: FAIL " + bad);
+            return bad.toString();
+        }
+        bootLog(pidfile, "envcheck: OK（root 域 / ppid=" + ppid + " / oom=" + oomRaw + "）");
+        return "";
+    }
+
+    private static void appendSep(StringBuilder sb) {
+        if (sb.length() > 0) {
+            sb.append("；");
+        }
+    }
+
+    /** 读 /proc/<pid>/status 的 PPid。 */
+    private static int readPpid(int pid) {
+        String status = readText("/proc/" + pid + "/status");
+        for (String line : status.split("\n")) {
+            if (line.startsWith("PPid:")) {
+                return parseIntOr(line.substring(5).trim(), -1);
+            }
+        }
+        return -1;
+    }
+
+    private static int parseIntOr(String s, int fallback) {
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (Throwable t) {
+            return fallback;
+        }
+    }
+
+    private static String readText(String path) {
+        try (java.io.BufferedReader br = new java.io.BufferedReader(
+                new java.io.InputStreamReader(new java.io.FileInputStream(path)))) {
+            StringBuilder sb = new StringBuilder();
+            char[] buf = new char[1024];
+            int n;
+            while ((n = br.read(buf)) > 0) {
+                sb.append(buf, 0, n);
+            }
+            return sb.toString();
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    /** 带时间戳追加到两处日志：/data/local/tmp 与 app cache 的 server/daemon.log。 */
+    private static void bootLog(String pidfile, String msg) {
+        String ts = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+                .format(new java.util.Date());
+        String line = ts + " [pid " + android.os.Process.myPid() + "] " + msg + "\n";
+        Ln.i("[boot] " + msg);
+        appendFile(new java.io.File(TMP_LOG), line);
+        java.io.File appLog = appLogFile(pidfile);
+        if (appLog != null) {
+            appendFile(appLog, line);
+        }
+    }
+
+    /** pidfile 在 `<filesDir>/oas/server/server.pid`，同目录就是 app 侧可读的日志位置。 */
+    private static java.io.File appLogFile(String pidfile) {
+        if (pidfile == null || pidfile.isEmpty()) {
+            return null;
+        }
+        try {
+            java.io.File parent = new java.io.File(pidfile).getParentFile();
+            if (parent == null) {
+                return null;
+            }
+            if (!parent.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                parent.mkdirs();
+            }
+            return new java.io.File(parent, "daemon.log");
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static void appendFile(java.io.File f, String text) {
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(f, true)) {
+            out.write(text.getBytes("UTF-8"));
+            out.flush();
+        } catch (Throwable t) {
+            // 日志写不了不能影响启动；tmp 那份失败时给 stderr 留个痕迹
+            System.err.println("log 写入失败 " + f + ": " + t);
         }
     }
 
