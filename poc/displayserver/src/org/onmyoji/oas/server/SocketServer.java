@@ -82,6 +82,7 @@ public final class SocketServer {
         }
         engine.releaseAll();
         heartbeat.stop();
+        DaemonWakeLock.release();
         // 退出时把 socket 文件删掉，不给下次留垃圾
         //noinspection ResultOfMethodCallIgnored
         file.delete();
@@ -136,6 +137,8 @@ public final class SocketServer {
                 case "exit":
                     running = false;
                     heartbeat.stop();
+                    // 退出即放锁，不给系统留「已退出还占着 wake lock」的残留
+                    DaemonWakeLock.release();
                     return "{\"ok\":true,\"bye\":true}";
                 case "help":
                     return "{\"ok\":true,\"cmds\":\"ping|create name w h dpi [flags]|mirror src w h out|"
@@ -264,6 +267,8 @@ public final class SocketServer {
             });
         }
         if ("stop".equals(sub)) {
+            // 注意：这里**不放锁**。hb 只是心跳录制，daemon 还在服务、自动化也可能还在跑；
+            // 在 hb stop 放锁会重现「息屏时 CPU 真停」。锁的作用域跟进程生命周期（见类注释）。
             return heartbeat.stop();
         }
         if ("status".equals(sub)) {

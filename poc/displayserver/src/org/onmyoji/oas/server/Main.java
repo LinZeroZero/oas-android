@@ -26,6 +26,7 @@ public final class Main {
         String selftestDir = null;
         String oncePath = null;
         String launchComponent = null;
+        boolean wakeLock = false; // ADR-0001 ②：--wakelock on 才持锁（默认 off，先不改默认行为）
         int w = 1280;
         int h = 720;
         int dpi = 320;
@@ -51,6 +52,9 @@ public final class Main {
                         break;
                     case "--launch":
                         launchComponent = args[++i];
+                        break;
+                    case "--wakelock":
+                        wakeLock = "on".equalsIgnoreCase(args[++i]);
                         break;
                     case "--grabs":
                         grabs = Integer.parseInt(args[++i]);
@@ -91,6 +95,15 @@ public final class Main {
             writePid(pidfile);
         }
 
+        // ADR-0001 ②：执行期间持 PARTIAL_WAKE_LOCK。默认 off，只有显式 --wakelock on 才申请；
+        // 申请失败只告警（bootLog），不能让 daemon 起不来。
+        if (wakeLock) {
+            String wlErr = DaemonWakeLock.acquire();
+            bootLog(pidfile, "wakelock: " + (wlErr.isEmpty()
+                    ? "持有 " + DaemonWakeLock.TAG
+                    : "申请失败（继续跑）: " + wlErr));
+        }
+
         try {
             if (selftestDir != null) {
                 int code = selftest(selftestDir, w, h, dpi, waitMs, launchComponent, grabs);
@@ -110,6 +123,9 @@ public final class Main {
             Ln.e("main 异常", t);
             t.printStackTrace();
             System.exit(1);
+        } finally {
+            // 正常返回 / 异常退出都要放锁（System.exit 时 shutdown hook 也会兜一次）
+            DaemonWakeLock.release();
         }
     }
 
