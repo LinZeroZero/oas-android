@@ -396,13 +396,13 @@ app 只保留 UI + 前台服务 + socket 客户端。
 ## 十二、接力点（写手交棒用）
 > 制度见 `docs/WORKFLOW.md §1`：**一个写手位，可以换人，不可并行**。换棒时本节整节替换，不追加历史；**详细内容写在交接包里**（`docs/handoff/`）。
 
-- **分支**：`main`，head = `f3d970c`（PR #14 已合并），工作区干净
+- **分支**：`main`，head = `9969156`（PR #18 已合并），工作区干净
 - **主 AI 交接包**：`docs/handoff/20261115-0150-main-ai.md`（调度位换人时先读这个；写手棒交接包是另一份）
 - **换棒判据**：上下文接近压缩阈值即换棒（256K × 0.7 ≈ 179K 词元，或消息数到 20 条触发总结）
-- **当前交接包**：`docs/handoff/20261115-0110-bg21-c-phase.md`（七要素，第 7 节启动动作已实测可跑）
-- **写手位交接**：A（`519dbd40…`，97% 定格）→ A2（`8833100c-271d-4988-b752-ebce0f2321ca`，BG-19，定格）→ A3（`ca2b0219-0992-4e48-996d-dc9fcf071460`，BG-23，定格）→ **当前 A4（`3464a2d7-9d14-4b05-9ee2-35dcd7f6e265`，标题 `OAS-A4 写手（BG-21 C 段预实验）`）**
-- **本棒任务（BG-21）**：先做**预实验**回答「这台机器上能不能观测到整机 suspend」（P0 链路 / P1 探针 / P2 阴性对照 / P3 对照灵敏度 / P4 时长标定，每档 ≤20s）；三条 gate 全绿才做正式测（熄屏 65s，两组对照 + `suspend_stats` 差值）
-- **本轮决策（用户，2026-11-15）**：① 会话**不追分组**，靠 `OAS-<角色><序号> <任务>` 标题前缀识别（直改 Room 库会被 App 写回，见 BG-25）；② **BG-22 先不改代码**，用预实验拿基线数据再决定 `setSurface(null)`；③ 文档/收口先做，再放写手开工
+- **当前交接包**：`docs/handoff/20261115-0130-bg22-setSurface.md`（BG-22 七要素，面向写手 A4 续棒）
+- **写手位交接**：A（`519dbd40…`，97% 定格）→ A2（`8833100c-271d-4988-b752-ebce0f2321ca`，BG-19，定格）→ A3（`ca2b0219-0992-4e48-996d-dc9fcf071460`，BG-23，定格）→ A4（`3464a2d7-9d14-4b05-9ee2-35dcd7f6e265`，BG-21 pilot 已交回 `efc0588`）→ **本棒仍由 A4 续棒做 BG-22，不新建 A5**（依据：A4 仅 4 条消息、无输出截断记录；`WORKFLOW §1` 只禁并行、不要求每棒换人）
+- **本棒任务（BG-22）**：主屏熄屏时对虚拟屏 `setSurface(null)`，**默认关**（ship dark，仅显式 extra 生效）；一次装机两组熄屏实验（feature off 跑 65s = BG-21 新口径复现组；feature on 跑 65s = BG-22 效果组），两组都采 `kb run` 报告、`suspend_stats` 前后值、`dumpsys power | grep mHoldingDisplaySuspendBlocker`、`frames` 是否停增
+- **本轮决策（用户，2026-11-15）**：① **BG-21 官方口径先不改、不关闭**，先用预实验复现验证新口径（真熄屏 65s → `n/4=4/4` 且 C 段 `maxGap ≤1500ms`），拿到第二组数据再定案；② **BG-22 采纳 `setSurface(null)`**（默认关，用户已知情「虚拟屏停渲」的代价）；③ 会话**不追分组**，靠 `OAS-<角色><序号> <任务>` 标题前缀识别（BG-25）；④ 文档收口与交接包**外包给子会话**，主 AI 只做决策/验收/合并
 - **已知坑**：
   - 心跳每行格式固定 `{"ts":ms,"displayId":id,"frames":n,"pid":p}`（`Heartbeat.java`），别自创字段
   - `displayId=-1` 时 `frames` 恒为 -1，不能用来判「画面在动」；要判渲染必须在真实虚拟屏 displayId 上跑
@@ -411,6 +411,8 @@ app 只保留 UI + 前台服务 + socket 客户端。
   - 子会话**没有工作区附件**，主 AI 下指令必须贴绝对路径 `/data/user/0/com.ai.assistance.operit/files/workspace/8868caab-ae27-4814-9992-11fb83225a35`，否则它会去 `/sdcard` 下瞎找
   - **工具分工**：工作区/git 用 `super_admin:terminal`（proot），摸设备用 `super_admin:shell`（root）；proot 里读 `/sys/power/*` 是 `Permission denied`（实测）
   - 从 proot 连不上抽象 socket（`/proc/net/unix` Permission denied、`ConnectionRefused`）
+  - 【新】**`super_admin:shell` 默认 cwd 是已被删除的目录** → 任何 `app_process`（含 `kb run`）**必须先 `cd /data/local/tmp`**，否则 JVM 启动期 SIGSEGV（`System_specialProperties ← __strncat_chk`，`getcwd()` 返回 NULL）；`env -i` 不能绕过，只会变成「rc=0 但完全空跑」
+  - 【新】`dumpsys power` 里的 `displayId:N` **跟着当前前台画面走**（游戏 `:19`、Operit `:0`），脚本里禁止写死 19
 
 ## 十三、许可
 
