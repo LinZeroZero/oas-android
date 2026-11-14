@@ -11,9 +11,11 @@
 | 写手 A | `OAS-A 写手（唯一代码位）` | 代码、构建、装机、真机验证、`git commit` | 换工作区、把工程复制到别处、未经评审直接合 `main` |
 | 诊断 B | `OAS-B 旋转定责（只读）` | 只读命令、整理证据 | 写任何文件、装有副作用的设置 |
 | 文档 C | `OAS-C 文档` | `README.md`、`THIRD_PARTY_NOTICES.md` | `app/`、`HANDOFF.md`、碰设备 |
-| 调研 D | `OAS-D daemon 长存调研` | 联网调研、给做法清单 | 写代码、碰设备 |
+| 调研 D（**兼任评审**） | `OAS-D daemon 长存调研` | 联网调研；只读审 `git diff <tag>...HEAD`、按 §5 检查表出 PASS/FAIL | 写代码、碰设备、改任何文件、`git add/commit` |
 
 **唯一写手原则**：代码只由 A 落地。B/C/D 发现要改代码，只交结论给 A。
+
+**四眼原则（4-eyes）**：A 写完不自审，主 AI 也不自审——由 D 按 §5 检查表独立出 PASS/FAIL，主 AI 只执行「按意见合并或打回」。
 
 ## 2. 分支模型
 
@@ -35,6 +37,8 @@
   `build: OK / APK md5 fa604011… / 48,891,504 B`
 
 ## 4. 门禁（每次提交和每次合入都要过）
+
+**一键跑：** `bash tools/gate.sh`，末尾必须输出一行 `GATE: PASS` 或 `GATE: FAIL <项名>`。逐项含义见下。
 
 1. `bash tools/build_displayserver.sh` 无错（改了 Java 才需要）
 2. `./gradlew :app:assembleDebug` → `BUILD SUCCESSFUL`，记下 APK 大小与 md5
@@ -88,6 +92,14 @@
 - A 绝对不要 `checkout`/`reset`/`rebase`：会把主 AI 或其他会话的工作区一起切走
 - 主 AI 做 `checkout`/`merge` 前先确认：没有 gradle 在跑、A 处于空闲
 - 找不到能回滚的点时用最近一个 tag，不要用 `reset --hard` 盲猜
+
+### 9.1 同时活跃上限（硬性，实测内存只剩 401MB / loadavg 18.6）
+
+- 同一时刻**最多 2 个活跃会话**：写手 A + 1 个只读（评审 D 或诊断 B）
+- C（文档）与 D 不同时开工；D 做评审期间 B 暂停，反之亦然
+- 有人要长时间占设备（四段约 4 分钟）时，另一个只读会话必须先停手
+- 超出的活写进 `docs/BACKLOG.md` 排队，**不并行开**
+
 
 ## 10. 一个任务的完整生命周期（照这个走）
 

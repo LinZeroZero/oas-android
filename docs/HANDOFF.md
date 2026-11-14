@@ -386,7 +386,7 @@ app 只保留 UI + 前台服务 + socket 客户端。
 - 会话分工与 chat_id：
   - A 写手（唯一代码位）`519dbd40-9e9a-480e-939e-248a88fa46fc`
   - B 诊断（只读）`b53d34d9-cb1e-4f60-8516-9e51aef35f77`
-  - C 文档 `3bf3c365-dc5b-49a8-84be-dbd1d278198e`
+  - C 文档 `3bf3c365-dc5b-49a8-84be-dbd1c278198e`
   - D 调研 `e29b2b98-efe0-4c9b-97ee-5d78f9282368`
 - **事实修正（重要）**：`HANDOFF 11.5` 里「daemon 约 60s 后消失」是误判。实测 pid 990 **持续存活 ≈71 分钟**，`oom_score_adj=-1000`、cgroup `freezer:/`、PPid=1，`server.log` 仅 `READY`。
   真正导致 A 路线没数字的是：app 侧心跳线程被 socket 调用拖死 + 报告只在最后写一次（所以磁盘上一片空白）。
