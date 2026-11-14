@@ -1,0 +1,97 @@
+{
+  "ts": "2026-11-14 11:23:45",
+  "work_dir": "/data/user/0/org.onmyoji.oas.android/files/oas",
+  "rounds": 2,
+  "delay_s": 8,
+  "display_id": -1,
+  "canvas": "1280x720",
+  "last_map": {
+    "screen_w": 2412,
+    "screen_h": 1080,
+    "rect": [
+      7,
+      3,
+      2407,
+      1077
+    ],
+    "dst": [
+      0,
+      73,
+      1280,
+      646
+    ],
+    "mode": "letterbox"
+  },
+  "results": [
+    {
+      "display_id": -1,
+      "screen": "2412x1080",
+      "format": 1,
+      "content_rect": [
+        0,
+        0,
+        2412,
+        1080
+      ],
+      "crop_rect": [
+        0,
+        0,
+        2412,
+        1080
+      ],
+      "crop_size": "2412x1080",
+      "canvas_rect": [
+        0,
+        73,
+        1280,
+        646
+      ],
+      "fit_mode": "letterbox",
+      "canvas": "1280x720",
+      "capture_ms": 211.6,
+      "decode_ms": 18.2,
+      "raw_bytes": 10419856,
+      "mean": 79.84,
+      "std": 73.03,
+      "black_ratio": 0.2042,
+      "preview": "/data/user/0/org.onmyoji.oas.android/files/oas/cache/canvas_1280x720.png",
+      "round": 1,
+      "total_ms": 677.7
+    },
+    {
+      "display_id": -1,
+      "screen": "2412x1080",
+      "format": 1,
+      "content_rect": [
+        7,
+        3,
+        2407,
+        1077
+      ],
+      "crop_rect": [
+        7,
+        3,
+        2407,
+        1077
+      ],
+      "crop_size": "2400x1074",
+      "canvas_rect": [
+        0,
+        73,
+        1280,
+        646
+      ],
+      "fit_mode": "letterbox",
+      "canvas": "1280x720",
+      "capture_ms": 165.0,
+      "decode_ms": 13.9,
+      "raw_bytes": 10419856,
+      "mean": 188.84,
+      "std": 98.1,
+      "black_ratio": 0.2042,
+      "preview": "/data/user/0/org.onmyoji.oas.android/files/oas/cache/canvas_1280x720.png",
+      "round": 2,
+      "total_ms": 352.4
+    }
+  ]
+}

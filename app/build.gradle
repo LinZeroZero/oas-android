@@ -1,0 +1,113 @@
+// 说明：本模块故意使用 Groovy DSL。
+// Chaquopy 插件的 python {} 扩展是在 AGP 插件应用之后才创建的，
+// Kotlin DSL 的类型安全访问器在这个时机拿不到，会报 "Unresolved reference 'python'"。
+plugins {
+    alias(libs.plugins.android.application)
+    // 不写 version：Kotlin Gradle Plugin 已经通过 kotlin.plugin.compose 进入
+    // 构建脚本 classpath，再带版本号会报 "already on the classpath with an unknown version"。
+    id 'org.jetbrains.kotlin.android'
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.chaquopy)
+}
+
+android {
+    namespace 'org.onmyoji.oas.android'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "org.onmyoji.oas.android"
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName "0.1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        vectorDrawables {
+            useSupportLibrary true
+        }
+        // OAS 只需要 arm64（真机 / 主流设备），单 ABI 可显著减小体积
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        compose true
+    }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            // Chaquopy 的 .so 需要可解压，否则部分设备上加载失败
+            useLegacyPackaging true
+        }
+    }
+}
+
+// Force use of ARM64 binaries for AAPT2 in Proot environment
+configurations.all {
+    resolutionStrategy.eachDependency { details ->
+        if (details.requested.group == "com.android.tools.build" && details.requested.name == "aapt2") {
+            details.useTarget("com.android.tools.build:aapt2:${details.requested.version}:linux-aarch64")
+        }
+    }
+}
+
+// Chaquopy：嵌入式 CPython 3.13（Chaquopy 17.2 支持 3.10–3.15）
+// 注意：Chaquopy 15+ 的 DSL 是 chaquopy { defaultConfig { ... } }，
+// 旧的顶层 python {} 块已被标记为 deprecated（仅 Groovy 兼容）。
+chaquopy {
+    defaultConfig {
+        version = "3.13"
+        // 构建机需要一个同版本的解释器来做 pip 解析（Chaquopy 的 buildPython）。
+        // 本机系统 Python 只有 3.12，3.13 用 uv 装的 standalone 版：
+        //   uv python install 3.13
+        buildPython "/root/.local/share/uv/python/cpython-3.13-linux-aarch64-gnu/bin/python3.13"
+
+        pip {
+            // 注意：不要覆盖 index-url。
+            // numpy 这类原生包需要 Chaquopy 自己构建的 Android 轮子，
+            // 只有 Chaquopy 的包索引里有（清华/阿里源都没有）。
+            // 钉 1.26.2：该版本有 cp313/arm64 轮子；numpy 2.x 对 OAS 老代码更不友好。
+            install "numpy==1.26.2"
+            // 缩放 + PNG 编解码用；Chaquopy 有预编译轮子（cp313 = pillow 11.0.0）
+            install "pillow"
+        }
+    }
+}
+
+dependencies {
+
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.lifecycle.runtime.ktx
+    implementation libs.androidx.activity.compose
+    implementation platform(libs.androidx.compose.bom)
+    implementation libs.androidx.ui
+    implementation libs.androidx.ui.graphics
+    implementation libs.androidx.ui.tooling.preview
+    implementation libs.androidx.material3
+    // OpenCV：Python 侧 cv2 走 shim，真正算在 Java/AAR 的原生实现里
+    // （opencv-python 只有 cp38/cp310 轮子，Chaquopy 3.13 装不上）
+    implementation libs.opencv
+    testImplementation libs.junit
+    androidTestImplementation libs.androidx.junit
+    androidTestImplementation libs.androidx.espresso.core
+    androidTestImplementation platform(libs.androidx.compose.bom)
+    androidTestImplementation libs.androidx.ui.test.junit4
+    debugImplementation libs.androidx.ui.tooling
+    debugImplementation libs.androidx.ui.test.manifest
+}

@@ -1,0 +1,36 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# --- 构建产物 / 缓存（可再生） ---
+/app/build
+/build
+/.kotlin
+/.gradle
+/poc/displayserver/build
+# daemon jar 是构建产物：由 bash tools/build_displayserver.sh 生成并自动拷入
+/app/src/main/assets/server/*.jar
+# 打包进 APK 的 python 中间产物
+/app/src/main/python/**/*.pyc
+
+# --- 大体积原始帧（统计值已入 JSON，PNG 预览保留） ---
+*.raw
+
+# --- Operit 平台自身的备份/配置（不属于源码，也不该提交） ---
+/.backup
+/.operit
+
+# --- 发布物 / 大二进制（不进 git，构建可再生） ---
+/dist/*.apk

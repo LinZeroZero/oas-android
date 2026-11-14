@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通知栏小图标（必须是纯 alpha 的矢量，颜色会被系统染成白色） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,2A10,10 0 1,0 12,22A10,10 0 1,0 12,2zM12,5A7,7 0 1,0 12,19A7,7 0 1,0 12,5z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9,8L16,12L9,16z" />
+</vector>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+     xmlns:tools="http://schemas.android.com/tools">
+
+     <!-- 阶段 2 / P1-1：保活前台服务所需权限
+          注意：故意不申请 RECEIVE_BOOT_COMPLETED —— 本应用不自启。 -->
+     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+     <uses-permission android:name="android.permission.WAKE_LOCK" />
+     <!-- 允许用户把本应用加入「不受电池优化限制」；只在用户主动点按钮时才跳系统页 -->
+     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+     <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MyApplication"
+        tools:targetApi="31">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.MyApplication">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+             </intent-filter>
+         </activity>
+
+         <!-- 最小保活前台服务：只保活 app 进程 + 持 WakeLock，不管 daemon 生命周期。
+              Android 14+ 必须声明 foregroundServiceType；用 specialUse（保活无更贴切的类别），
+              dataSync 在 Android 15 上会被限时 6 小时，不适合长跑。 -->
+         <service
+             android:name=".service.KeepAliveService"
+             android:exported="false"
+             android:foregroundServiceType="specialUse">
+             <property
+                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                 android:value="Keep the automation engine (embedded CPython + in-app scheduler) alive while the screen is off; local-only, no network sync." />
+         </service>
+     </application>
+
+</manifest>
