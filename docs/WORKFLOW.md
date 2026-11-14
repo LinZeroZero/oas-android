@@ -17,12 +17,17 @@
 
 **四眼原则（4-eyes）**：A 写完不自审，主 AI 也不自审——由 D 按 §5 检查表独立出 PASS/FAIL，主 AI 只执行「按意见合并或打回」。
 
-## 2. 分支模型
+## 2. 分支模型（与「合并 ≠ 发布」）
 
-- `main`：只能通过验收的快照（四段 4/4），随时可回滚
-- `feat/<主题>`：一个任务一个分支，例如 `feat/b-daemon-heartbeat`
-- `fix/<主题>`：修缺陷
-- 标签：`v<阶段>-<序号>-<含义>`，例如 `v0.2-b0-baseline`、`v0.2-b1-4of4`
+- `main` = **trunk（持续集成主线）**：必须始终可构建、`static-gate` 绿。
+  **合进来 ≠ 发布**；验收状态看 tag。
+- `feat/<主题>` / `fix/<主题>` / `docs/<主题>`：**短命分支**，一个任务一个，合完即删。
+  禁止长期挂着的 PR——「等完美再合」是行业反模式 Stale Branches，会堆出集成悬崖。
+- **tag = 发布标记**，用 SemVer：
+  - `vX.Y.Z-bN` = 预发布（功能已合入，但发布门禁未过）
+  - `vX.Y.Z` = 正式（发布门禁全过）
+- 风险性改动优先做成「默认关」（ship dark）：只有显式触发才生效，
+  这样合进 trunk 不改变默认行为（例：daemon 只由 `--ei keepalive 1` 这类 extra 拉起）。
 
 ## 3. 提交纪律
 
@@ -36,17 +41,24 @@
 - 提交信息末尾带一行实测/构建信息，例如：
   `build: OK / APK md5 fa604011… / 48,891,504 B`
 
-## 4. 门禁（每次提交和每次合入都要过）
+## 4. 两层门禁（合并门禁 ≠ 发布门禁）
 
-**一键跑：** `bash tools/gate.sh`，末尾必须输出一行 `GATE: PASS` 或 `GATE: FAIL <项名>`。逐项含义见下。
+### 4.1 合并门禁（每次合入 main 必过；CI 服务端强制）
 
 1. `bash tools/build_displayserver.sh` 无错（改了 Java 才需要）
 2. `./gradlew :app:assembleDebug` → `BUILD SUCCESSFUL`，记下 APK 大小与 md5
-3. 装机后 `am start --ei cv_selftest 1` → 32/32（改了 cv 相关才需要）
-4. 四段验证 **4/4** 且 C 段心跳空洞 < 5000ms（改了保活/心跳才需要）
-5. 收尾干净：`am force-stop`、daemon 0、`*.raw` 删净、Operit 回前台
+3. `bash tools/gate.sh --static` → `GATE: PASS`（语法 + 硬约束 + AGP 版本）
+4. CI 检查 **`static-gate` 绿**（main 分支保护强制，`enforce_admins` 打开，主 AI 也绕不过）
+5. 提交信息符合 Conventional Commits
 
-任何一条不过：留在 `feat/` 分支上修，**不许合 `main`**。
+### 4.2 发布门禁（决定 tag 是 `-bN` 还是正式版）
+
+1. 装机后 `--ei cv_selftest 1` → **32/32**（改了 cv 相关才需要）
+2. 四段验证 **4/4** 且 C 段心跳空洞 **< 5000ms**（改了保活/心跳才需要）
+3. 收尾干净：`am force-stop`、daemon 0 个、`*.raw` 删净、Operit 回前台
+4. 结果写 `docs/evidence/YYYYMMDD-HHMM-<主题>.md`
+
+**判定**：合并门禁不过 → 不许合入 main；发布门禁不过 → 只能打 `-bN` 预发布 tag，不许打正式版。
 
 ## 5. 评审方式（主 AI 做）
 
@@ -132,3 +144,13 @@
 - 本地 hook：`.githooks/pre-push`（进仓库）+ `git config core.hooksPath .githooks`。
   新 clone 要跑一次这条 config；它是护栏不是锁，可 `--no-verify` 绕过。
 - 密钥纪律：PAT / 私钥绝不入库；`.gitignore` 已含 `.netrc`、`*.token`、`*.pem`、`*_rsa`。
+
+## 12. 案例：PR #1（首次真实跑通）
+
+| 步骤 | 实际发生 |
+|---|---|
+| 分支 | `feat/b-daemon-heartbeat`（9 个提交） |
+| CI | `static-gate` 绿 → PR `mergeable_state` 从 `blocked` 变 `clean`（证明拦截生效） |
+| 合并 | merge commit `929750b`，分支短命，合完即可删 |
+| tag | `v0.2.0-b1`（预发布，因 BG-01 未过四段 4/4） |
+| 未验收的部分 | 明确写进 merge commit message，不藏在聊天里 |

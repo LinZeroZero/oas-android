@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 拉取上游 OnmyojiAutoScript 到 vendor/oas，并打上本仓库的补丁
 #
-#   bash tools/fetch_vendor.sh                 # 用 REF（默认 main）拉取到 vendor/oas
-#   REF=v0.3.1 bash tools/fetch_vendor.sh      # 指定 tag / 分支 / commit
+#   bash tools/fetch_vendor.sh                 # 用 REF（默认 dev）拉取到 vendor/oas
+#   REF=oas-install-v1.0.0 bash tools/fetch_vendor.sh  # 指定 tag / 分支 / commit
 #   bash tools/fetch_vendor.sh --check         # 只校验本地 vendor 状态（不联网、不写文件）
 #
 # 幂等：
@@ -17,7 +17,9 @@
 set -u
 
 UPSTREAM_URL="${UPSTREAM_URL:-https://github.com/nearaura/OnmyojiAutoScript}"
-REF="${REF:-main}"
+# 上游默认分支是 dev（2026-11-14 实测：clone 下来的 HEAD 是 origin/dev，
+# refs/heads/dev=f1ba2a5c…；master 是另一条较旧的线，不存在 main）
+REF="${REF:-dev}"
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
