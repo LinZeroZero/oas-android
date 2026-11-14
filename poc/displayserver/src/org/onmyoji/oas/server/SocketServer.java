@@ -119,6 +119,8 @@ public final class SocketServer {
                     return cmdList();
                 case "destroy":
                     return cmdDestroy(a);
+                case "surface":
+                    return cmdSurface(a);
                 case "exit":
                     running = false;
                     heartbeat.stop();
@@ -136,7 +138,8 @@ public final class SocketServer {
                             + "命名空间 socket，不落地文件、无 chmod）;"
                             + " --cmd '<line>' = 只执行一条命令，不 bind socket\""
                             + ",\"cmds\":\"ping|create name w h dpi [flags]|mirror src w h out|"
-                            + "grab id out|stats id|list|destroy id|"
+                             + "grab id out|stats id|list|destroy id|"
+                             + "surface detach id|surface attach id|"
                             + "hb start intervalMs displayId path|hb stop|hb status|watch ...|exit\"}";
                 default:
                     return err("unknown command: " + a[0]);
@@ -196,6 +199,28 @@ public final class SocketServer {
         }
         return "{\"ok\":true,\"display\":" + DisplayEngine.describe(e)
                 + ",\"rotation\":" + DisplayEngine.displayRotation(e) + "}";
+    }
+
+    /** BG-22：`surface detach|attach <id>` —— 摘/接虚拟屏输出端，不改其他状态。 */
+    private String cmdSurface(String[] a) {
+        if (a.length < 3) {
+            return err("usage: surface <detach|attach> <displayId>");
+        }
+        int id;
+        try {
+            id = Integer.parseInt(a[2]);
+        } catch (NumberFormatException e) {
+            return err("displayId 必须是整数: " + a[2]);
+        }
+        boolean ok;
+        if ("detach".equals(a[1])) {
+            ok = engine.detach(id);
+        } else if ("attach".equals(a[1])) {
+            ok = engine.attach(id);
+        } else {
+            return err("usage: surface <detach|attach> <displayId>");
+        }
+        return "{\"ok\":" + ok + ",\"displayId\":" + id + "}";
     }
 
     /**
