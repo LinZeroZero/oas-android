@@ -8,7 +8,6 @@ import org.onmyoji.oas.server.third.Ln;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.File;
 import java.io.FileDescriptor;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
@@ -35,33 +34,14 @@ public final class SocketServer {
     private final KbRun kbRun = new KbRun(engine, heartbeat);
     private volatile boolean running = true;
 
-    /** true = 文件系统 socket（可 chmod、可被 app 直接连）；false = 退到抽象命名空间。 */
-    private static boolean sFileSocket = true;
-
-    public static boolean usingFileSocket() {
-        return sFileSocket;
-    }
-
     public SocketServer(String path) {
         this.path = path;
     }
 
     public void run() throws Exception {
-        File file = new File(path);
-        if (file.exists() && !file.delete()) {
-            Ln.w("旧 socket 删不掉: " + path);
-        }
-        File parent = file.getParentFile();
-        if (parent != null && !parent.exists()) {
-            //noinspection ResultOfMethodCallIgnored
-            parent.mkdirs();
-        }
         LocalServerSocket server = openServer(path);
-        if (sFileSocket) {
-            chmod666(path);
-        }
-        Ln.i("socket ready: " + path + (sFileSocket ? "" : " (abstract fallback)"));
-        System.out.println("READY " + path);
+        Ln.i("socket ready: " + socketLabel(path));
+        System.out.println("READY " + socketLabel(path));
         System.out.flush();
 
         while (running) {
@@ -84,9 +64,6 @@ public final class SocketServer {
         engine.releaseAll();
         heartbeat.stop();
         DaemonWakeLock.release();
-        // 退出时把 socket 文件删掉，不给下次留垃圾
-        //noinspection ResultOfMethodCallIgnored
-        file.delete();
         Ln.i("socket server 退出");
     }
 
@@ -149,7 +126,16 @@ public final class SocketServer {
                     DaemonWakeLock.release();
                     return "{\"ok\":true,\"bye\":true}";
                 case "help":
-                    return "{\"ok\":true,\"cmds\":\"ping|create name w h dpi [flags]|mirror src w h out|"
+                    // 一并写清 CLI 侧 --socket 的真实语义：此前 openServer 无视入参，
+                    // 谁都以为抽象名和路径是两套东西。
+                    return "{\"ok\":true"
+                            + ",\"socket\":\"" + esc(socketLabel(path)) + "\""
+                            + ",\"usage\":\"--socket <name> = 抽象命名空间名（缺省 " + ABSTRACT_NAME
+                            + "，换名即可同机共存，同名报 Address already in use）;"
+                            + " --socket /abs/path = 同样按抽象名 bind（Android 公开 API 只能建抽象"
+                            + "命名空间 socket，不落地文件、无 chmod）;"
+                            + " --cmd '<line>' = 只执行一条命令，不 bind socket\""
+                            + ",\"cmds\":\"ping|create name w h dpi [flags]|mirror src w h out|"
                             + "grab id out|stats id|list|destroy id|"
                             + "hb start intervalMs displayId path|hb stop|hb status|watch ...|exit\"}";
                 default:
@@ -366,15 +352,36 @@ public final class SocketServer {
 
     private static final String ABSTRACT_NAME = "org.onmyoji.oas.display";
 
+    /** 打日志/回执里用的 socket 名：补一句 (abstract) 提醒它不是文件。 */
+    private static String socketLabel(String path) {
+        return resolveName(path) + " (abstract)";
+    }
+
+    /** `--socket` 的取值 → 真正 bind 的抽象名：null/空退到 {@link #ABSTRACT_NAME}，其余原样用。 */
+    private static String resolveName(String path) {
+        return (path == null || path.trim().isEmpty()) ? ABSTRACT_NAME : path;
+    }
+
     /**
-     * 打开服务端 socket。
+     * 按 `--socket` 的入参打开服务端 socket，**真的按名字 bind**。
      *
-     * 用「抽象命名空间」而不是文件系统 socket：LocalServerSocket 的公开构造只接受
-     * 名字或 fd，抽象名空间没有文件权限问题，app 跨 uid 也能直连，也不用留 socket 文件。
+     * - `null` / 空 → 固定抽象名 {@link #ABSTRACT_NAME}（与旧行为一致，app 侧连的就是这个名字）
+     * - 其余（含 `/` 开头的字符串）→ 原样当抽象名 bind：换名即可在同一台机器上跑第二个实例，
+     *   同名则照常抛 Address already in use（说明 bind 确实按名字生效）
+     *
+     * 为什么不支持「/ 开头的文件系统 socket」：Android 公开 API 只能在抽象命名空间起监听。
+     * 官方文档原话（android.net.LocalServerSocket）："On the Android platform, the name is
+     * created in the Linux abstract namespace (instead of on the filesystem)"；类里也只有
+     * `LocalServerSocket(String)` 与 `LocalServerSocket(FileDescriptor)` 两个构造，没有 File 版
+     * （`new LocalServerSocket(new File(p))` 直接编译不过）。所以原来那套「文件 socket + chmod 666」
+     * 分支无法落地，已一并删除，避免留死代码骗人。
      */
     private static LocalServerSocket openServer(String path) throws Exception {
-        sFileSocket = false;
-        return new LocalServerSocket(ABSTRACT_NAME);
+        if (path != null && path.startsWith("/")) {
+            Ln.w("--socket 收到路径形态，但公开 API 不支持文件系统 socket（只有抽象命名空间）→ "
+                    + "按抽象名 bind: " + path);
+        }
+        return new LocalServerSocket(resolveName(path));
     }
     /** 跑一条 shell 命令并返回合并输出（daemon 是 root，am/input 都能直接调）。 */
     private static String sh(String cmd) {
@@ -393,15 +400,6 @@ public final class SocketServer {
             return sb.toString();
         } catch (Throwable t) {
             return "exec 失败: " + t;
-        }
-    }
-
-    private static void chmod666(String path) {
-        try {
-            Process p = Runtime.getRuntime().exec(new String[]{"chmod", "666", path});
-            p.waitFor();
-        } catch (Throwable t) {
-            Ln.w("chmod 失败: " + t);
         }
     }
 

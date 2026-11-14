@@ -12,7 +12,13 @@ import java.util.Locale;
  * 入口。三种用法：
  *
  * 1) 常驻服务（app 用）：
- *      app_process /system/bin org.onmyoji.oas.server.Main --socket /path/display.sock [--pidfile /path/pid]
+ *      app_process /system/bin org.onmyoji.oas.server.Main --socket <name> [--pidfile /path/pid]
+ *      --socket 的值原样交给 SocketServer.openServer（见那里的注释）：
+ *        <name>      抽象命名空间名，缺省 org.onmyoji.oas.display；换名即可同机跑第二个实例
+ *        /abs/path   同样按抽象名 bind —— Android 公开 API 只在抽象命名空间监听，
+ *                    不落地文件、无 chmod（官方文档：name is created in the Linux abstract
+ *                    namespace, instead of on the filesystem）
+ *      注意 --cmd 只执行一条命令，不 bind socket。
  * 2) 自检（开发期一条命令验证建屏+取帧是否通）：
  *      app_process /system/bin org.onmyoji.oas.server.Main --selftest /path/outdir [w] [h] [dpi]
  * 3) 一次性抓帧（不用 socket，适合排查）
