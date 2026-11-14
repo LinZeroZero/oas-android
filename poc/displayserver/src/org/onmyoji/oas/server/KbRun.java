@@ -231,7 +231,8 @@ public final class KbRun {
             readSamples(reportPath + ".jsonl", samples);
         }
         PhaseStats[] out = new PhaseStats[phases.size() + 1];
-        boolean allPass = true;
+        // 空 phases = 致命异常发生在第一段之前（一段都没跑）→ 不是「全过」，是「全没过」
+        boolean allPass = !phases.isEmpty();
         long totalSec = 0;
         long totalStart = Long.MAX_VALUE;
         long totalEnd = Long.MIN_VALUE;
@@ -315,6 +316,16 @@ public final class KbRun {
         st.startTs = startTs;
         st.endTs = endTs;
         long prevTs = -1;
+        // 边界衔接：拿窗口前最后一个心跳当起点，段首之前的空洞也要算进 maxGap
+        // （否则「上一段刚断、这一段开头补上」会被漏判成好段）。
+        for (int i = 0; i < samples.size(); i++) {
+            long ts = samples.get(i)[0];
+            if (ts < startTs) {
+                prevTs = ts;
+            } else {
+                break;
+            }
+        }
         long firstFrames = Long.MIN_VALUE;
         for (int i = 0; i < samples.size(); i++) {
             long[] s = samples.get(i);
@@ -338,8 +349,10 @@ public final class KbRun {
         st.framesFirst = firstFrames == Long.MIN_VALUE ? -1L : firstFrames;
         st.framesDelta = (st.framesFirst >= 0 && st.framesLast >= 0)
                 ? st.framesLast - st.framesFirst : -1L;
-        // 判据：行数 ≥ 段秒数*0.8，且单拍最大间隔 ≤ 5s
-        st.pass = (double) st.lines >= seconds * 0.8 && st.maxGapMs <= MAX_GAP_MS;
+        // 判据：秒数必须 > 0（`kb run 0 5 5` 不许空过）、行数 ≥ max(1, 段秒数*0.8)，且单拍最大间隔 ≤ 5s
+        st.pass = seconds > 0
+                && st.lines >= Math.max(1L, needLines(seconds))
+                && st.maxGapMs <= MAX_GAP_MS;
         return st;
     }
 
