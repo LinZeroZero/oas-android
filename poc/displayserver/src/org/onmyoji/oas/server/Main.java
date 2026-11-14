@@ -17,6 +17,9 @@ import java.util.Locale;
  *      app_process /system/bin org.onmyoji.oas.server.Main --selftest /path/outdir [w] [h] [dpi]
  * 3) 一次性抓帧（不用 socket，适合排查）
  *      app_process /system/bin org.onmyoji.oas.server.Main --once /path/out.raw [w] [h] [dpi] [waitMs]
+ * 4) 一次性执行一条 socket 命令（不 bind socket、不常驻；给 --wait N 则轮询 kb status
+ *    最多等 N ms，跑完（或超时告警）后打印结果退出）：
+ *      app_process /system/bin org.onmyoji.oas.server.Main --cmd "kb run 3 3 3 -1 /path/report" --wait 20000
  */
 public final class Main {
 
@@ -26,6 +29,8 @@ public final class Main {
         String selftestDir = null;
         String oncePath = null;
         String launchComponent = null;
+        String cmdLine = null;   // --cmd <line>：不 bind socket，执行一条命令就退出
+        boolean waitGiven = false;
         boolean wakeLock = false; // ADR-0001 ②：--wakelock on 才持锁（默认 off，先不改默认行为）
         int w = 1280;
         int h = 720;
@@ -67,7 +72,11 @@ public final class Main {
                         dpi = Integer.parseInt(args[++i]);
                         break;
                     case "--wait":
+                        waitGiven = true;
                         waitMs = Integer.parseInt(args[++i]);
+                        break;
+                    case "--cmd":
+                        cmdLine = args[++i];
                         break;
                     default:
                         Ln.w("忽略未知参数: " + a);
@@ -105,6 +114,21 @@ public final class Main {
         }
 
         try {
+            if (cmdLine != null) {
+                // 一次性执行一条 socket 命令：不 bind socket、不常驻（为了不做 APK 也能验 kb run）。
+                // 后台线程（kb 段循环）挂在本进程上，--wait 用来给它留跑完的时间。
+                SocketServer server = new SocketServer(socket == null ? "" : socket);
+                String response = server.exec(cmdLine);
+                boolean finished = !waitGiven || awaitIdle(server, waitMs);
+                System.out.println(response);
+                System.out.flush();
+                if (!finished) {
+                    // 报告可能还没写全：退出码仍算命令已执行，但在 stderr 明确提醒
+                    System.err.println("--wait " + waitMs + "ms 超时：后台任务可能仍在跑"
+                            + "（用 --cmd \"kb status\" 复查，或稍后读报告）");
+                }
+                System.exit(0);
+            }
             if (selftestDir != null) {
                 int code = selftest(selftestDir, w, h, dpi, waitMs, launchComponent, grabs);
                 System.exit(code);
@@ -114,7 +138,7 @@ public final class Main {
                 System.exit(code);
             }
             if (socket == null) {
-                System.err.println("必须指定 --socket 或 --selftest 或 --once");
+                System.err.println("必须指定 --socket 或 --selftest 或 --once 或 --cmd");
                 System.exit(2);
             }
             SocketServer server = new SocketServer(socket);
@@ -242,6 +266,32 @@ public final class Main {
             return sb.toString();
         } catch (Throwable t) {
             return "";
+        }
+    }
+
+    // ------------------------------------------------------------------ //
+
+    /**
+     * 轮询 `kb status` 等后台段循环结束（最多 waitMs）。
+     *
+     * 为什么不用固定 sleep：段循环的实际耗时随 --stop / 异常变化，定长等待要么白等、
+     * 要么提前退出把半份报告当成品。返回 true = 已结束（或本来没在跑）；false = 超时。
+     */
+    private static boolean awaitIdle(SocketServer server, int waitMs) {
+        long deadline = System.currentTimeMillis() + Math.max(0, waitMs);
+        while (true) {
+            String st = server.exec("kb status");
+            if (st == null || !st.contains("\"running\":true")) {
+                return true;
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                return false;
+            }
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                return false;
+            }
         }
     }
 
