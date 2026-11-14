@@ -46,10 +46,14 @@
 
 ## 5. 评审方式（主 AI 做）
 
-- 不用阅读整份文件，直接看 `git diff main...HEAD --stat` + `git diff main...HEAD`
+**锚点用 tag，不用 `main`。** 因为 feature 分支可能就是从同一个提交切出来的，`main...HEAD` 会显示空 diff。
+
+- 评审只看增量：`git diff <上一个已验证 tag>...HEAD --stat`，需要细节再加 `-- <路径>`
+  例：`git diff v0.2-b1-daemon-hb-unverified...HEAD --stat`
 - 评审关注：是否动了硬约束（分辨率/画布/自启/AGP 版本）、socket 超时是否仍 ≤2s、
-  是否又引入 app 侧心跳、异常路径是否仍能落盘
-- 通过才执行 `git checkout main && git merge --no-ff feat/<主题> && git tag ...`
+  是否又引入 app 侧心跳、异常路径是否仍能落盘、有没有往仓库里塞大二进制
+- 通过才：`git checkout main && git merge --no-ff feat/<主题>` → 打新 tag（如 `v0.2-b2-verified`）
+- 不通过：只在会话里给意见，**不动分支**
 
 ## 6. 证据留痕
 
@@ -70,3 +74,26 @@
 - Gradle 8.14.3 / AGP 8.13.2（不能上 9.x）/ minSdk 26 / targetSdk 35 / arm64-v8a
 - 构建只用 `./gradlew`（PATH 上的 gradle 4.31 会报 Task not found）
 - 测完必须把手机还给用户（亮屏 + Operit 回前台）
+
+## 9. 并发与 git 权限（重要）
+
+多个会话共享**同一个工作区和同一个分支**，所以 git 写权限必须分开：
+
+| 操作 | 允许方 |
+|---|---|
+| `git add` / `git commit` | 写手 A |
+| `git checkout` / `merge` / `tag` / `reset` / `revert` | **只有主 AI** |
+| `git diff` / `log` / `status` / `show` | 所有人（只读） |
+
+- A 绝对不要 `checkout`/`reset`/`rebase`：会把主 AI 或其他会话的工作区一起切走
+- 主 AI 做 `checkout`/`merge` 前先确认：没有 gradle 在跑、A 处于空闲
+- 找不到能回滚的点时用最近一个 tag，不要用 `reset --hard` 盲猜
+
+## 10. 一个任务的完整生命周期（照这个走）
+
+1. 主 AI 从最新已验证 tag 切分支：`git checkout -b feat/<主题> <tag>`，通知 A 当前分支名
+2. A 小步实现 + 小步 commit（每次 commit 前跑一次 assembleDebug）
+3. 门禁：需要时跑 cv_selftest 32/32 与四段 4/4，结果写 `docs/evidence/`
+4. 主 AI 按 tag 做 diff 评审（只看增量）
+5. 通过 → `merge --no-ff` 进 main → 打 tag → 改 `docs/HANDOFF.md` 结论
+6. 不通过 → 留在 feat 分支继续修，历史不污染 main
