@@ -397,6 +397,7 @@ app 只保留 UI + 前台服务 + socket 客户端。
 > 制度见 `docs/WORKFLOW.md §1`：**一个写手位，可以换人，不可并行**。本节只保留**当前**接力点的最小上下文；换棒时整节替换，不追加历史。
 
 - **分支**：`main`，head = `753dd9e`（PR #9 已合并），工作区干净
+- **换棒判据**：上下文接近压缩阈值即换棒（256K × 0.7 ≈ 179K 词元，或消息数到 20 条触发总结）——触发压缩就等于丢掉前半棒约束
 - **写手位交接**：A（`519dbd40…`，上下文 97%，已定格）→ **A2（`8833100c-271d-4988-b752-ebce0f2321ca`，已完成 BG-19，已定格）** → **当前 A3（`ca2b0219-0992-4e48-996d-dc9fcf071460`，标题 `OAS-A3 写手（BG-23 --socket 真参数）`）**
 - **上一棒交付（BG-19，已合并）**：`kb run <a> <b> <c> <displayId> <reportPath>`（daemon 侧三段计时 + 心跳判读 + txt/json 报告）、`SocketServer.exec(String)`、`Main --cmd/--wait`
   - 真机：`kb run 5 5 5 -1 …` → `n/4 = 4/4（全过）`；`kb run 0 0 0` → `0/4`（fail-closed）
@@ -408,6 +409,7 @@ app 只保留 UI + 前台服务 + socket 客户端。
   - `displayId=-1` 时 `frames` 恒为 -1，不能用来判「画面在动」；要判渲染必须在真实虚拟屏 displayId 上跑
   - daemon 在 root 域，日志必须双写 `/data/local/tmp/oas-daemon.log` + app cache
   - 改完 jar 必须重跑 `tools/build_displayserver.sh` 覆盖 `app/src/main/assets/server/server.jar`，否则装上去的还是旧逻辑
+  - 子会话**没有工作区附件**，接手时必须由主 AI 在指令里贴绝对路径 `/data/user/0/com.ai.assistance.operit/files/workspace/8868caab-ae27-4814-9992-11fb83225a35`，否则它会去 `/sdcard` 下瞎找
   - 从 proot / `super_admin:terminal` **连不上抽象 socket**（`/proc/net/unix` Permission denied、`ConnectionRefused`）；设备侧联调只能用 `super_admin:shell` 起 `app_process` 或走 `--cmd`
 
 ## 十三、许可
