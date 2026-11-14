@@ -5,14 +5,15 @@
 
 ## 一、阻塞 B 路线验收（P0）
 
-- [ ] **BG-01 四段拿不到 4/4：B 段起 app 侧驱动器被冻**
+- [x] **BG-01 四段拿不到 4/4：B 段起 app 侧驱动器被冻**（决策完成，实现见 BG-17~BG-21）
   - 证据：`/proc/2198/task/2375/stack` = `do_freezer_trap`（线程级冻结，进程 stat 仍 S）
   - 归属：A（改代码）
   - 方向候选：把 phase driver 前移到 daemon（`kb run <a> <b> <c> <reportPath>`），app 只触发+显示
-  - 状态：**等用户拍板架构方向**
+  - 决策：**ADR-0001 Accepted**（`docs/adr/0001-daemon-owns-automation.md`），实现拆成 BG-17~BG-21
 
 - [ ] **BG-02 C 段（息屏 60s）从未真正测过**
   - 因 BG-01 连带阻塞；daemon 心跳在后台无空洞（645 拍/644s/maxGap 1004ms）只是旁证，不是 C 段数据
+  - **测法按 ADR-0001 §4 改**：先确认游戏 `displayId:19` 的 SCREEN_BRIGHT_WAKE_LOCK 已释放，再同记 `maxGap` 与 `suspend_stats/success` 前后差值
   - 归属：A
 
 ## 二、流程与工具（P1）
@@ -46,14 +47,36 @@
   - 该 token 已出现在对话中，并已用于建仓 / 推送 / 开 PR / 改可见性
   - 要求：GitHub → Developer settings → 撤销；改用 fine-grained、单仓、90 天
   - 归属：用户（主 AI 无法代做）
-- [ ] **BG-13 `gate.sh` 的 5 条评审意见未落地**
+- [x] **BG-13 `gate.sh` 的 5 条评审意见已落地**
   - L118 `[ "$PASSED" = "$TOTAL" ]` 在 `$TOTAL` 缺失时被 `set -u` 中断，GATE 行不输出
   - L143 固定 `sleep 240`，余量仅 55 秒，易误报
   - L229 正则排除空格，`wm size 1280x720` / `wm size -100x100` 全漏检
   - L221 只扫 `app/src` 与 `poc/displayserver/src`，漏 `tools/`、`*.kts`
-  - 归属：A（D 评审结论 FAIL）
+  - 关闭依据：PR #4 → `f029b6a`；`gate.sh --static` = `GATE: PASS`，并实测能拦住 `wm size 1280x720`
 - [x] **BG-14 服务端强制已生效** —— `static-gate` strict + `enforce_admins=true` + 禁 force push
   - 依据：PR #1 / PR #2 的 `mergeable_state` 均从 `blocked` 变 `clean`
 - [x] **BG-15 缺 CHANGELOG** —— 已建 `CHANGELOG.md`（Keep a Changelog 1.1.0）
 - [ ] **BG-16 文档漂移**：`docs/HANDOFF.md §11` 仍写旧 tag 名 `v0.2-b1-daemon-hb-unverified`
   - 归属：C
+
+## 六、ADR-0001 实现拆分（P0，按顺序做，每项一个 PR）
+
+- [ ] **BG-17 daemon 环境自检（root 域守卫）**
+  - 启动时校验：`ppid` 不是 app 进程、`oom_score_adj == -1000`、`/proc/self/cgroup` 不含 `/apps/`
+  - 不满足则写日志并拒绝执行（防止以后被改成从 app fork，静默退回被冻结状态）
+  - 归属：A；验收：故意从 app 直接派生一次，必须被拒绝并留下日志
+- [ ] **BG-18 daemon 持 `PARTIAL_WAKE_LOCK`**
+  - `--wakelock on|off`；任务结束/异常退出必须释放；只申请 PARTIAL，不申请屏幕锁
+  - 归属：A；验收：`dumpsys power` 里能看到我们的 tag，结束后消失
+- [ ] **BG-19 `kb run <a> <b> <c> <reportPath>`：driver 前移进 daemon**
+  - 段循环、读心跳 JSONL、算 maxGap、写报告都在 daemon；app 只发命令 + 读报告
+  - 归属：A；验收：app 全程在后台（甚至 force-stop 之外）仍能拿到完整四段报告
+- [ ] **BG-20 app↔daemon 改短连接**
+  - 每次请求新建连接 + 超时 + 重连，不假设长连接（freezer 会掐 socket）
+  - 归属：A；验收：daemon 重启或 socket 被断开后，app 下一次操作自动恢复
+- [ ] **BG-21 C 段真测与数据判读**
+  - 先释放/确认 `displayId:19` 屏锁，再锁屏静置 60s，同记 maxGap 与 suspend 差值
+  - 归属：A（执行）+ 主 AI（写 evidence）
+- [ ] **BG-22 排查游戏自持 `SCREEN_BRIGHT_WAKE_LOCK 'WindowManager/displayId:19'`**
+  - 现象：`WorkSource{10386 com.netease.onmyoji}` 长期持有，虚拟屏不灭，会让「息屏测试」变成假息屏
+  - 归属：B（只读诊断）
