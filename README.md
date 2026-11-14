@@ -99,4 +99,16 @@ am start -n org.onmyoji.oas.android/.MainActivity
 
 ## 许可
 
-OAS 本体为 GPL-3.0，本修改版同样遵守该许可并保留原作者信息。仅供学习交流。
+本项目是 **[OnmyojiAutoScript](https://github.com/nearaura/OnmyojiAutoScript)**（GPL-3.0）的**修改版**：
+
+- **修改说明（GPL-3.0 §5a）**：自 2026-11-14 起，对上游脚本做了 Android 移植改造——
+  新增 Kotlin/Java 宿主层（虚拟屏、root 特权进程、帧采集、cv2 shim），
+  上游 Python 代码的改动全部记录在 `patches/` 下。
+- **许可证**：GNU General Public License v3.0，完整文本见 [LICENSE](LICENSE)。
+  本修改版同样以 **GPL-3.0** 发布，保留原作者版权信息。
+- **完整对应源码**：本仓库即修改版源码。上游原始脚本不进仓库，用
+  `tools/fetch_vendor.sh` 可一键取回（详情见 `docs/UPSTREAM.md`）。
+- **无担保**：本程序按“原样”提供，不附带任何担保（GPL-3.0 §15、§16）。
+  本项目仅供学习交流，使用风险自负；请遵守游戏服务条款与当地法律。
+- 第三方组件（scrcpy / OpenCV / Chaquopy / NumPy 等）的单独许可见
+  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

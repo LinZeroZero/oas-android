@@ -33,7 +33,8 @@ Apache-2.0 要求：保留版权与许可声明、标明修改。本文件承担
 
 - 上游：https://github.com/nearaura/OnmyojiAutoScript
 - 许可证：GNU General Public License v3.0
-- 位置：`vendor/oas/`（源码副本）
+- 位置：上游源码**不进本仓库**（`vendor/oas/` 已被 `.gitignore` 排除，避免把第三方代码塞进历史），
+  用 `tools/fetch_vendor.sh` 按固定版本取回；本仓库对上游 Python 的改动全部记录在 `patches/` 下
 - 说明：本修改版整体同样以 GPL-3.0 分发，保留原作者信息。仅供学习交流。
 
 ---
@@ -55,8 +56,27 @@ Apache-2.0 要求：保留版权与许可声明、标明修改。本文件承担
 
 | 依赖 | 许可证 |
 |---|---|
-| Chaquopy（嵌入式 CPython） | MIT（Chaquopy 自身）/ PSF（CPython） |
+| Chaquopy 17.2.0（嵌入式 CPython 3.13） | MIT（Chaquopy 自身）/ PSF（CPython） |
+| OpenCV 4.13.0（`org.opencv:opencv` AAR） | Apache-2.0 |
 | NumPy | BSD-3-Clause |
 | Pillow | HPND / PIL License |
 | AndroidX / Material Components | Apache-2.0 |
 | Kotlin / kotlinx | Apache-2.0 |
+
+### 4.1 OpenCV 4.13.0 — Apache License 2.0
+
+- 上游：https://opencv.org / https://github.com/opencv/opencv
+- 引入方式：`org.opencv:opencv` 官方 AAR（Java 绑定 + `libopencv_java4.so`），
+  `abiFilters "arm64-v8a"` 只保留一份原生库
+- 暴露给 Python 的两层：
+  - `app/src/main/java/org/onmyoji/oas/android/cv/CvBridge.kt`（numpy ↔ `Mat` 搬运）
+  - `app/src/main/python/cv2.py`（Python shim，签名对齐；未实现的函数显式报错而非静默）
+- **未修改 OpenCV 源码**，只在 Java 侧调用其公开 API。
+  Apache-2.0 的「保留声明 + 标明修改」义务由本文件承担。
+
+### 4.2 Chaquopy 17.2.0 — MIT（另有商业许可）
+
+- 上游：https://chaquo.com/chaquopy/
+- 许可证：MIT（开源项目免费）；闭源/商业分发另有商业许可，详见上游
+- 用途：嵌入式 CPython 3.13 运行时，把 `app/src/main/python/*.py` 打进 APK 并用 `PyRuntime` 调用
+- **未修改 Chaquopy 源码**，仅通过 Gradle 插件与其配置块使用。
