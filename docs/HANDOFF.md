@@ -393,7 +393,21 @@ app 只保留 UI + 前台服务 + socket 客户端。
 - **自动旋转定责**：当前 `accelerometer_rotation=0`、`user_rotation=0`；`RotationHistory` 中 18:14:38 的 `USER_ROTATION_FREE` 来源是 `com.ai.assistance.operit MainActivity`（未锁方向的 UI 跟随传感器），**不是脚本写设置**；仓库 2706 个文件 0 处写旋转。
 - 隐患：`screen_off_timeout=1800000`，很可能是当时“还原”时把改后的值当成了原值。
 
-## 十二、许可
+## 十二、接力点（写手交棒用）
+
+> 制度见 `docs/WORKFLOW.md §1`：**一个写手位，可以换人，不可并行**。本节只保留**当前**接力点的最小上下文；换棒时整节替换，不追加历史。
+
+- **分支**：`feat/kb-run`，head = `c44ea59`（已 push），工作区干净
+- **任务**：BG-19 —— `kb run <a> <b> <c> <displayId> <reportPath>`，把四段 phase driver 从 app 移进 daemon
+- **已完成**：`poc/displayserver/src/org/onmyoji/oas/server/KbRun.java` 骨架（daemon 侧 A/B/C 三段计时 + 兜底心跳 + 写 txt 报告）；`SocketServer.java` 新增 `case "kb"` 分发 `kb run|status|stop`；`tools/build_displayserver.sh` 编译通过
+- **下一步**：解析心跳 JSONL，按段切出 maxGap / 行数 / frames 增量，出 `n/4` 判定与 json 报告；之后补 D 段（唤醒 + 定向点击，默认关）
+- **已知坑**：
+  - 心跳每行格式固定 `{"ts":ms,"displayId":id,"frames":n,"pid":p}`（`Heartbeat.java`），别自创字段
+  - `cmdHeartbeat` 要求 displayId 存在或传 `-1`；传 `-1` 时 `frames` 恒为 -1，不能用来判「画面在动」
+  - daemon 在 root 域，日志必须双写 `/data/local/tmp/oas-daemon.log` + app cache
+  - 改完 jar 必须重跑 `tools/build_displayserver.sh` 覆盖 `app/src/main/assets/server/server.jar`，否则装上去的还是旧逻辑
+
+## 十三、许可
 
 OAS 上游为 **GPL-3.0**，本修改版同样遵守并保留原作者信息，仅供学习交流。
 引入 scrcpy 封装须保留其 Apache-2.0 版权头并写 `THIRD_PARTY_NOTICES.md`；MAA-Meow / AzurPilot 为 AGPL-3.0，**不复制其代码**。
