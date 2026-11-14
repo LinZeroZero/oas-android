@@ -39,6 +39,8 @@ OAS 移植版要在**用户正常使用手机**的前提下跑游戏自动化：
 4. **本机会真的挂起**：`/sys/power/suspend_stats/success = 1164`。所以 C 段（息屏）失败的主因可能不是逻辑 bug，而是没人持 wake lock。
 5. **「息屏测试」此前不成立**：`dumpsys power` 里游戏自己持有
    `SCREEN_BRIGHT_WAKE_LOCK 'WindowManager/displayId:19'`（`WorkSource{10386 com.netease.onmyoji}`，已持续 1h25m），虚拟屏被它锁着亮。
+6. **`PowerManager` 在 `app_process` 里不可用**（2026-11-14 实测）：`Workarounds.getSystemContext()` 返回 null，`FakeContext` base 为 null，`getSystemService` NPE；反射 `IPowerManager` 在 API 35 亦失败。改走内核 sysfs 后实测通过：写入 `oas:probe` 后 `cat /sys/power/wake_lock` 有内容，写 `wake_unlock` 后清空；`dumpsys power` 看不到它属正常（那是 PowerManager 层，这是内核层）。`/sys/power/wake_lock` 权限 `-rw-rw---- radio wakelock`，root 可写。
+7. **`kill -TERM` 不触发 shutdown hook**（实测）：仅靠 JVM 钩子会在被 kill 时漏掉释放 → 内核锁残留 → 手机永不休眠。加 reaper 子进程后实测 `kill -TERM` 收尾干净：`held=[]`、`reaper=0`、`daemon=0`。
 
 ### 同类先例
 
@@ -55,8 +57,10 @@ OAS 移植版要在**用户正常使用手机**的前提下跑游戏自动化：
    启动路径固定为 `su -c "CLASSPATH=... app_process ..."`，不得由 app 直接 `fork`。
    daemon 启动时**自检**：`ppid` 不是 app 进程、`oom_score_adj == -1000`、`/proc/self/cgroup` 不在 `/apps/` 下；任一不满足则拒绝执行并写日志。目的：防止以后有人「顺手」改成从 app 派生，从而静默退回被冻结状态。
 
-2. **执行自动化期间持 `PARTIAL_WAKE_LOCK`**
-   由 daemon 通过 `PowerManager` 申请（root 可直连系统服务），可配 `--wakelock on|off`，任务结束或异常退出必须释放。
+2. **执行自动化期间持 PARTIAL 语义的内核 wake lock**
+   由 daemon 直接写内核接口申请：`echo oas:daemon > /sys/power/wake_lock`，释放写 `/sys/power/wake_unlock`；可配 `--wakelock on|off`。
+   **不用 `PowerManager`**（原方案，实测不可行）：`app_process` 环境下 `Workarounds.getSystemContext()` 返回 null → `FakeContext` 的 base 为 null → `getSystemService` 必然 NPE；反射 `IPowerManager` 在 API 35 同样失败。内核 sysfs 是唯一在本结构下能用的 PARTIAL 锁路径。
+   **必须配 reaper 兜底**：`kill -TERM` 不执行 shutdown hook，锁会残留，而残留锁的后果是**整机永不休眠**（比心跳空洞严重得多）。因此申请锁的同时拉起一个守护子进程：`sh -c 'while kill -0 <pid>; do sleep 2; done; echo oas:daemon > /sys/power/wake_unlock'`，由它保证 daemon 以任何方式死亡后锁都被清掉。
    **不申请**屏幕锁（`SCREEN_BRIGHT_WAKE_LOCK` / `FULL_WAKE_LOCK`）——主屏必须能被用户正常熄灭，这是产品硬约束。
 
 3. **app ↔ daemon 用短连接**
@@ -88,7 +92,8 @@ OAS 移植版要在**用户正常使用手机**的前提下跑游戏自动化：
 - daemon 侧代码量上升（段循环、JSONL 解析、空洞计算、报告写入、wake lock 生命周期）。
 - root 域调试更难：日志必须同时落 `/data/local/tmp` 与 app cache，否则又是「看不见」。
 - 需要新增一条「daemon 环境自检」的回归检查，否则架构约束会随时间腐化。
-- 持 `PARTIAL_WAKE_LOCK` 会增加耗电，属于用户显式启动自动化时的可接受成本，但必须在结束时释放。
+- 持内核 wake lock 会增加耗电，属于用户显式启动自动化时的可接受成本，但必须在结束时释放（靠 reaper 保证）。
+- 多一个常驻 reaper 子进程（每 2 秒一次 `kill -0`），需纳入「结束即清理」的验收项。
 
 ## 4. 对验收方法的影响（必须同步改）
 
@@ -100,6 +105,7 @@ OAS 移植版要在**用户正常使用手机**的前提下跑游戏自动化：
 
 - AOSP《Cached apps freezer》《Low memory killer daemon》
 - developer.android.com《Processes and app lifecycle》《Doze and App Standby》
-- developer.android.com《PowerManager》（`PARTIAL_WAKE_LOCK`）
+- developer.android.com《PowerManager》（`PARTIAL_WAKE_LOCK` 语义）
+- Linux 内核 `/sys/power/wake_lock`、`/sys/power/wake_unlock`（Android 专有 sysfs 接口）
 - scrcpy `doc/develop.md`；Termux `TermuxService.java`
 - 本项目证据：`docs/evidence/`（四段与心跳实测记录）

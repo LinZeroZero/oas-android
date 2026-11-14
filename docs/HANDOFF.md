@@ -380,7 +380,7 @@ app 只保留 UI + 前台服务 + socket 客户端。
 
 ### 11.7 协作与 Git 流程（2026-11-14 20:20 起生效）
 
-- 仓库已 git 化：基线 commit `8da15fb`（**已含 B v1 实现**），标签 `v0.2-b1-daemon-hb-unverified`，工作分支 `feat/b-daemon-heartbeat`。
+- 仓库已 git 化：基线 commit `8da15fb`（**已含 B v1 实现**），当前 tag 为 `v0.2.0-b1`（SemVer 预发布，旧 tag `v0.2-b1-daemon-hb-unverified` 已删除），主干 `main`。
 - 流程文档：`docs/WORKFLOW.md`（分支 / 提交纪律 / 门禁 / 评审 / 回滚 / 并发 git 权限 / 任务生命周期）。
 - 评审锚点用 tag 不用 main（feature 与 main 同源时 main...HEAD 是空 diff）；证据写 `docs/evidence/`。
 - 会话分工与 chat_id：
