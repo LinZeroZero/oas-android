@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# push 前的本地兑底：跑静态门禁（bash -n + 硬约束 grep），不进 Android SDK。
+# 定位：只是护栏，不是锁。可被 `git push --no-verify` 绕过；
+# 真正的强制在服务端（main 分支保护要求 static-gate 检查通过）。
+set -u
+ROOT=$(git rev-parse --show-toplevel) || exit 0
+cd "$ROOT" || exit 0
+[ -x tools/gate.sh ] || [ -f tools/gate.sh ] || exit 0
+out=$(bash tools/gate.sh --static 2>&1)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    printf '%s\n' "$out" | tail -20
+    echo ""
+    echo "pre-push: 静态门禁未通过，push 已中止。"
+    echo "  紧急绕过： git push --no-verify（服务端 CI 仍会拦你）"
+    exit 1
+fi
+echo "pre-push: GATE PASS（$(printf '%s' "$out" | tail -1)）"
+exit 0

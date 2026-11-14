@@ -109,3 +109,26 @@
 4. 主 AI 按 tag 做 diff 评审（只看增量）
 5. 通过 → `merge --no-ff` 进 main → 打 tag → 改 `docs/HANDOFF.md` 结论
 6. 不通过 → 留在 feat 分支继续修，历史不污染 main
+
+## 11. 服务端实况（GitHub）与强制力排序
+
+仓库：https://github.com/LinZeroZero/oas-android（public）
+
+| 项 | 现状 |
+|---|---|
+| main 分支保护 | requires status check **`static-gate`**（strict：分支必须最新） |
+| 强制 push / 删分支 | 均禁止 |
+| 管理员豁免 | **无**（enforce_admins=true，主 AI 也绕不过去） |
+| 评审要求 | **不设 required approvals**（单账号永远无法自审，见下） |
+
+**强制力排序：服务端 CI > 本地 pre-push hook > 人的自律**。
+
+- 为什么不要 required approvals：GitHub 官方明确「PR 作者不能批准自己的 PR」，
+  单人项目开这个必死锁。Martin Fowler 站的 Ship/Show/Ask 也明确反对把“评审批准”
+  当合并前提，并把“每个 PR 都要 2 个 reviewer”列为缺乏信任的信号。
+- 所以本项目的评审是**建议性（Show 模式）**：CI 绿即可自合并；
+  D 的 `REVIEW: PASS/FAIL` 写进 PR 评论或 `docs/reviews/`，**不阻塞合并**，
+  但 FAIL 必须开一条 `docs/BACKLOG.md` 条目——否则等于没评。
+- 本地 hook：`.githooks/pre-push`（进仓库）+ `git config core.hooksPath .githooks`。
+  新 clone 要跑一次这条 config；它是护栏不是锁，可 `--no-verify` 绕过。
+- 密钥纪律：PAT / 私钥绝不入库；`.gitignore` 已含 `.netrc`、`*.token`、`*.pem`、`*_rsa`。
