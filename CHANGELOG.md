@@ -10,8 +10,17 @@
 ## [Unreleased]
 
 ### Added
+- daemon 启动自检（root 域守卫）：父进程不在 app 域、自身 `oom_score_adj <= -900`、自身 memory cgroup 不含 `/apps/`，任一不满足即拒绝执行并写日志
+- daemon `--wakelock on|off`：写内核 `/sys/power/wake_lock`（tag `oas:daemon`）持 PARTIAL 语义锁
+- reaper 守护子进程：daemon 以任何方式死亡后自动 `wake_unlock`（因 `kill -TERM` 不执行 shutdown hook）
+- `docs/adr/0001-daemon-owns-automation.md`：自动化执行体归 root daemon 的架构决策记录
 
-- （暂无）
+### Changed
+- wake lock 实现由 `PowerManager` 改为内核 sysfs（`app_process` 下 `getSystemContext()` 为 null，`getSystemService` 必然 NPE）
+- daemon 环境判据不用 cmdline 子串（`su -c` 起 shell 时会合法带包名，会误杀生产路径），改读父进程 cgroup
+
+### Fixed
+- 文档与实现不一致：ADR-0001 §Decision 第 2 条与 `docs/HANDOFF.md`/`docs/WORKFLOW.md` 的 tag 名同步为当前实现与 `v0.2.0-b1`
 
 ## [0.2.0-b1] - 2026-11-14
 

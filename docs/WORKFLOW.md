@@ -65,7 +65,7 @@
 **锚点用 tag，不用 `main`。** 因为 feature 分支可能就是从同一个提交切出来的，`main...HEAD` 会显示空 diff。
 
 - 评审只看增量：`git diff <上一个已验证 tag>...HEAD --stat`，需要细节再加 `-- <路径>`
-  例：`git diff v0.2-b1-daemon-hb-unverified...HEAD --stat`
+  例：`git diff v0.2.0-b1...HEAD --stat`
 - 评审关注：是否动了硬约束（分辨率/画布/自启/AGP 版本）、socket 超时是否仍 ≤2s、
   是否又引入 app 侧心跳、异常路径是否仍能落盘、有没有往仓库里塞大二进制
 - 通过才：`git checkout main && git merge --no-ff feat/<主题>` → 打新 tag（如 `v0.2-b2-verified`）

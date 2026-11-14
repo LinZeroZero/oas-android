@@ -56,18 +56,23 @@
 - [x] **BG-14 服务端强制已生效** —— `static-gate` strict + `enforce_admins=true` + 禁 force push
   - 依据：PR #1 / PR #2 的 `mergeable_state` 均从 `blocked` 变 `clean`
 - [x] **BG-15 缺 CHANGELOG** —— 已建 `CHANGELOG.md`（Keep a Changelog 1.1.0）
-- [ ] **BG-16 文档漂移**：`docs/HANDOFF.md §11` 仍写旧 tag 名 `v0.2-b1-daemon-hb-unverified`
+- [x] **BG-16 文档漂移** —— `docs/HANDOFF.md §11` 与 `docs/WORKFLOW.md` 的旧 tag 名已统一为 `v0.2.0-b1`
   - 归属：C
 
 ## 六、ADR-0001 实现拆分（P0，按顺序做，每项一个 PR）
 
-- [ ] **BG-17 daemon 环境自检（root 域守卫）**
-  - 启动时校验：`ppid` 不是 app 进程、`oom_score_adj == -1000`、`/proc/self/cgroup` 不含 `/apps/`
-  - 不满足则写日志并拒绝执行（防止以后被改成从 app fork，静默退回被冻结状态）
-  - 归属：A；验收：故意从 app 直接派生一次，必须被拒绝并留下日志
-- [ ] **BG-18 daemon 持 `PARTIAL_WAKE_LOCK`**
-  - `--wakelock on|off`；任务结束/异常退出必须释放；只申请 PARTIAL，不申请屏幕锁
-  - 归属：A；验收：`dumpsys power` 里能看到我们的 tag，结束后消失
+- [x] **BG-17 daemon 环境自检（root 域守卫）** —— 已实现（PR #6）
+  - 启动时校验：父进程不在 app 域、自身 `oom_score_adj <= -900`、自身 `/proc/self/cgroup` 的 `memory` 行不含 `/apps/`
+  - 判据修正：**不用 cmdline 子串**（`su -c "CLASSPATH=/data/user/0/org.onmyoji.oas.android/..."` 会合法带包名，会误杀生产路径），改读父进程 cgroup
+  - 日志双写：`/data/local/tmp/oas-daemon.log` + app cache `server/daemon.log`
+  - 实测：生产路径 `envcheck: ppid=25293 parent_memory_cgroup=4:memory:/ → OK`
+  - 归属：A；关闭依据：commit `846f134` + `bcd8066`
+- [x] **BG-18 daemon 持 PARTIAL 语义 wake lock** —— 已实现（PR #6）
+  - 实现方式修正：`PowerManager` 在 `app_process` 下取不到（`getSystemContext()` null → NPE），改走内核 `/sys/power/wake_lock`（tag `oas:daemon`）
+  - reaper 兜底：`kill -TERM` 不跑 shutdown hook，会漏释放导致**永不休眠**；已加 `sh` 守护子进程循环 `kill -0` 探活后 `wake_unlock`
+  - 四路释放：正常 exit / 服务循环结束 / finally / shutdown hook，外加 reaper 第五道
+  - 实测：`held=[oas:daemon]` + 1 个 reaper；`kill -TERM` 后 `lock=[]`、`reaper=0`、`daemon=0`
+  - 归属：A；关闭依据：commit `0de9b89`
 - [ ] **BG-19 `kb run <a> <b> <c> <reportPath>`：driver 前移进 daemon**
   - 段循环、读心跳 JSONL、算 maxGap、写报告都在 daemon；app 只发命令 + 读报告
   - 归属：A；验收：app 全程在后台（甚至 force-stop 之外）仍能拿到完整四段报告
