@@ -73,15 +73,28 @@
   - 四路释放：正常 exit / 服务循环结束 / finally / shutdown hook，外加 reaper 第五道
   - 实测：`held=[oas:daemon]` + 1 个 reaper；`kill -TERM` 后 `lock=[]`、`reaper=0`、`daemon=0`
   - 归属：A；关闭依据：commit `0de9b89`
-- [ ] **BG-19 `kb run <a> <b> <c> <reportPath>`：driver 前移进 daemon**
-  - 段循环、读心跳 JSONL、算 maxGap、写报告都在 daemon；app 只发命令 + 读报告
-  - 归属：A；验收：app 全程在后台（甚至 force-stop 之外）仍能拿到完整四段报告
+- [x] **BG-19 `kb run <a> <b> <c> <displayId> <reportPath>`：driver 前移进 daemon** —— 已实现（PR #9 → `753dd9e`）
+  - 段循环、读心跳 JSONL、算 maxGap / framesΔ、写 txt+json 报告都在 daemon；`SocketServer` 新增 `exec(String)`，`Main` 新增 `--cmd/--wait`（不起 APK 也能验）
+  - 判据 fail-closed：`lines >= max(1, ceil(sec*0.8))` 且 `maxGap <= 5000ms`；0 秒段不许空过、缺段标 `skip` 且不算 pass、`n/4` 分母恒 4（D 的 4-eyes FAIL 已在 `0671407` 返工）
+  - 实测：`kb run 5 5 5` → `4/4`；`kb run 0 0 0` → `0/4`；证据 `docs/evidence/20261114-2330-BG-19-daemon-kb-run.md`
+  - **未覆盖**：真实虚拟屏下 `frames` 是否递增 → BG-24；C 段真熄屏 → BG-21
+  - 归属：A → A2 接力完成
 - [ ] **BG-20 app↔daemon 改短连接**
   - 每次请求新建连接 + 超时 + 重连，不假设长连接（freezer 会掐 socket）
   - 归属：A；验收：daemon 重启或 socket 被断开后，app 下一次操作自动恢复
 - [ ] **BG-21 C 段真测与数据判读**
   - 先释放/确认 `displayId:19` 屏锁，再锁屏静置 60s，同记 maxGap 与 suspend 差值
   - 归属：A（执行）+ 主 AI（写 evidence）
-- [ ] **BG-22 排查游戏自持 `SCREEN_BRIGHT_WAKE_LOCK 'WindowManager/displayId:19'`**
-  - 现象：`WorkSource{10386 com.netease.onmyoji}` 长期持有，虚拟屏不灭，会让「息屏测试」变成假息屏
-  - 归属：B（只读诊断）
+- [ ] **BG-22 `displayId:19` 的 `SCREEN_BRIGHT_WAKE_LOCK` 定责与取舍** —— 定责已完成（B），**待真机验证 + 取舍决策**
+  - **定责修正**：持锁者是 `system_server`（uid=1000 pid=2106），不是游戏自持；`WorkSource{10386 com.netease.onmyoji}` 只是「该 display 上 top app」的标签。同一时刻 `displayId:0` 有同形系统锁（标签 `com.ai.assistance.operit`）
+  - 对「主屏能否被用户熄灭」：**不阻断**（超时看 `userActivity`，电源键走 `goToSleep`）→ 原先「假息屏」的担心是假象
+  - 对「整机不休眠 / 熄屏后自己复亮」：**真阻断**（SCREEN_BRIGHT 计入 `mWakeLockSummary`，`mHoldingDisplaySuspendBlocker=true`）
+  - 取舍结论：保留虚拟屏又不拿这把锁**无公开 API 可解**（改 `VIRTUAL_DISPLAY_FLAG` 无效、改 display power mode 需 system 权限）。唯一可行是主屏熄屏时对虚拟屏 `setSurface(null)` / `release()`，代价是游戏停渲 → **需用户点头**
+  - 验证法：`input keyevent 26` 后连查 `dumpsys power | grep -E 'mWakefulness=|displayId:19'` 与 `cat /sys/power/wake_lock`（与 BG-21 一起做，省一次熄屏）
+  - 归属：B（定责已交付）→ 主 AI（决策）/ A（改代码，若采纳 setSurface 方案）
+- [ ] **BG-23 `--socket` 参数是假参数**（`openServer(String path)` 无视入参，恒 bind `ABSTRACT_NAME`）
+  - 后果：① 换个 socket 名起第二实例必报 `Address already in use`；② `sFileSocket` 恒 false，`chmod666` 与文件 socket 分支是死代码
+  - 归属：A3（写手位第 3 棒）；验收：`--socket x.a --cmd ping` 与 `--socket x.b --cmd ping` 可并存；不传时行为与现在一致
+- [ ] **BG-24 BG-19 的 D 段未做**：唤醒 + 定向点击（默认关），并验真实虚拟屏下 `frames` 是否递增
+  - 现状 `frames` 判据只能靠 `displayId=-1` 跑成 `n/a`，等于没验「画面在动」
+  - 归属：A（后续棒次）；前置：BG-22 的 `setSurface` 取舍先定，否则熄屏即停渲

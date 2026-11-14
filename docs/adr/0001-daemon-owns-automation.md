@@ -101,6 +101,13 @@ OAS 移植版要在**用户正常使用手机**的前提下跑游戏自动化：
 - **记录两组数据**：`maxGap` **与** `/sys/power/suspend_stats/success` 的前后差值。
 - **判读规则**：若空洞与挂起次数强相关 → 是电源/唤醒问题（检查 wake lock），不是调度 bug；若持锁后仍空洞 → 才是 daemon 逻辑问题。
 
+**2026-11-14 定责修正（B 的只读诊断，推翻本 ADR 初版判断）**
+
+- 那把 `SCREEN_BRIGHT_WAKE_LOCK 'WindowManager/displayId:19'` **不是游戏自持**：持锁者是 `system_server`（uid=1000 pid=2106），系统为「仍处于 ON 状态的 display」按 display 持有；`WorkSource{10386 com.netease.onmyoji}` 只是挂在该锁上的 top app 标签。同一时刻 `displayId:0` 有同形系统锁（标签 `com.ai.assistance.operit`）。
+- 由此：**主屏可以被用户正常熄灭**，本文第 4 节第一条的「假息屏」担心对「主屏能否熄灭」不成立；但 SCREEN_BRIGHT 计入 `mWakeLockSummary`，会阻止 suspend、睡眠态还能把机器唤醒（`mHoldingDisplaySuspendBlocker=true`）——对「整机不休眠」是真阻断。
+- 既要保留虚拟屏、又不拿这把锁：改 `VIRTUAL_DISPLAY_FLAG`（PUBLIC / OWN_CONTENT_ONLY / PRESENTATION）无效；改 display power mode 需 system 权限调 `IPowerManager`，无公开 API。**唯一可行取舍**是主屏熄屏时对虚拟屏 `setSurface(null)` 或 `release()`，代价是游戏停渲（待用户决策，见 BACKLOG BG-22）。
+- C 段真测（BG-21）前置改为：`input keyevent 26` 后连查 `dumpsys power | grep -E 'mWakefulness=|displayId:19'` 与 `cat /sys/power/wake_lock`，确认「整机是否真的进了 suspend」，而不是只看主屏是否黑。
+
 ## 5. 参考
 
 - AOSP《Cached apps freezer》《Low memory killer daemon》
