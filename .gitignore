@@ -21,7 +21,7 @@ local.properties
 /.gradle
 /poc/displayserver/build
 # daemon jar 是构建产物：由 bash tools/build_displayserver.sh 生成并自动拷入
-/app/src/main/assets/server/*.jar
+# server.jar 纳入版本控制（18KB，CI 做漂移检测）
 # 打包进 APK 的 python 中间产物
 /app/src/main/python/**/*.pyc
 
@@ -34,3 +34,13 @@ local.properties
 
 # --- 发布物 / 大二进制（不进 git，构建可再生） ---
 /dist/*.apk
+
+# --- 上游第三方源码（不进仓库，用 docs/UPSTREAM.md + tools/fetch_vendor.sh 复现）---
+/vendor
+# --- 历史备份区（只留本地）---
+/staging
+# --- 密钥（绝不入库）---
+.netrc
+*.token
+*.pem
+*_rsa

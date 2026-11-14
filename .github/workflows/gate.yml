@@ -1,0 +1,44 @@
+name: gate
+
+# 云端只跑「不需要 Android SDK」的检查：
+#  - bash -n 语法
+#  - 硬约束 grep（wm size / BootReceiver / JobScheduler / AlarmManager / AGP 版本）
+# 真正的构建与真机四段只能在手机上跑（见 docs/WORKFLOW.md §4）
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: ['feat/**', 'fix/**']
+
+jobs:
+  static-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 静态门禁（tools/gate.sh --static）
+        run: bash tools/gate.sh --static
+
+      - name: 提交信息规范（Conventional Commits）
+        run: |
+          set -u
+          bad=""
+          # 只检查本次 push / PR 引入的提交；merge 提交豁免
+          range="${{ github.event.pull_request.base.sha || github.event.before }}..${{ github.sha }}"
+          for sha in $(git rev-list "$range" 2>/dev/null || echo "${{ github.sha }}" | head -1); do
+            msg=$(git log -1 --format=%s "$sha")
+            case "$msg" in
+              Merge*|Revert*) continue ;;
+            esac
+            if ! printf '%s' "$msg" | grep -qE '^(feat|fix|docs|chore|test|refactor|perf|build|ci|revert)(\([a-zA-Z0-9._-]+\))?!?: .+'; then
+              bad="$bad\n  $sha  $msg"
+            fi
+          done
+          if [ -n "$bad" ]; then
+            echo -e "以下提交不符合 Conventional Commits：$bad"
+            exit 1
+          fi
+          echo "提交信息规范 OK"

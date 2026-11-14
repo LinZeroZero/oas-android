@@ -378,6 +378,21 @@ app 只保留 UI + 前台服务 + socket 客户端。
 
 
 
+### 11.7 协作与 Git 流程（2026-11-14 20:20 起生效）
+
+- 仓库已 git 化：基线 commit `8da15fb`（**已含 B v1 实现**），标签 `v0.2-b1-daemon-hb-unverified`，工作分支 `feat/b-daemon-heartbeat`。
+- 流程文档：`docs/WORKFLOW.md`（分支 / 提交纪律 / 门禁 / 评审 / 回滚 / 并发 git 权限 / 任务生命周期）。
+- 评审锚点用 tag 不用 main（feature 与 main 同源时 main...HEAD 是空 diff）；证据写 `docs/evidence/`。
+- 会话分工与 chat_id：
+  - A 写手（唯一代码位）`519dbd40-9e9a-480e-939e-248a88fa46fc`
+  - B 诊断（只读）`b53d34d9-cb1e-4f60-8516-9e51aef35f77`
+  - C 文档 `3bf3c365-dc5b-49a8-84be-dbd1c278198e`
+  - D 调研 `e29b2b98-efe0-4c9b-97ee-5d78f9282368`
+- **事实修正（重要）**：`HANDOFF 11.5` 里「daemon 约 60s 后消失」是误判。实测 pid 990 **持续存活 ≈71 分钟**，`oom_score_adj=-1000`、cgroup `freezer:/`、PPid=1，`server.log` 仅 `READY`。
+  真正导致 A 路线没数字的是：app 侧心跳线程被 socket 调用拖死 + 报告只在最后写一次（所以磁盘上一片空白）。
+- **自动旋转定责**：当前 `accelerometer_rotation=0`、`user_rotation=0`；`RotationHistory` 中 18:14:38 的 `USER_ROTATION_FREE` 来源是 `com.ai.assistance.operit MainActivity`（未锁方向的 UI 跟随传感器），**不是脚本写设置**；仓库 2706 个文件 0 处写旋转。
+- 隐患：`screen_off_timeout=1800000`，很可能是当时“还原”时把改后的值当成了原值。
+
 ## 十二、许可
 
 OAS 上游为 **GPL-3.0**，本修改版同样遵守并保留原作者信息，仅供学习交流。
