@@ -25,6 +25,10 @@
   - 已缓解：非 SemVer 旧 tag 已删除，改用 `v0.2.0-b1`；从此往后 A 必须小步提交
 - [x] **BG-05 HANDOFF §11.7 里 C 的 chat_id 笔误**（`...dbd1d278198e` 应为 `...dbd1c278198e`）
   - 归属：主 AI
+- [x] **BG-26 `super_admin:shell` 默认 cwd 无效，`app_process` 启动期 SIGSEGV**
+  - 现象：`System_specialProperties → __strncat_chk` 空指针崩，`getcwd()` 返回 NULL；所有 `app_process` 调用必先 `cd /data/local/tmp`
+  - `env -i` 不能绕过，反而变成 rc=0 全空跑（更难查）
+  - 关闭依据：`docs/HANDOFF.md §十二 已知坑` 已入册 + 交接包 §4 复述（`docs/evidence/20261115-0057-BG-21-pilot.md §0` 为原始发现）
 
 ## 三、设备侧隐患（P2）
 
@@ -87,6 +91,7 @@
   - gate 三条：G1 四个探针都有明确值 / G2 至少一条路能让计数增长 ≥1 / G3 `kb run` 在本分支可直接跑且报告落盘。全绿才做正式测；不绿则改探针或提前触发 BG-22 取舍决策
   - **纪律**：预实验数据一律不得写进「通过/不通过」结论，只用于校准方法与阈值；预实验失败也算有效产出（避免跑完 60s 才发现测不到）
   - 归属：A4（执行）+ 主 AI（复核数字、定 BG-22 取舍、写 evidence）
+  - **2026-11-15 状态**：pilot 已证伪「灭屏前后 `suspend_stats/success` 差值」判据（`docs/evidence/20261115-0057-BG-21-pilot.md`，G1/G2/G3 全绿）；**官方口径暂不改**，先用复现数据（A4 的 BG-22 实验中 feature off 组）验证新口径「真熄屏 65s → `n/4=4/4` 且 C 段 `maxGap ≤1500ms`」再定案
 - [ ] **BG-22 `displayId:19` 的 `SCREEN_BRIGHT_WAKE_LOCK` 定责与取舍** —— 定责已完成（B），**待真机验证 + 取舍决策**
   - **定责修正**：持锁者是 `system_server`（uid=1000 pid=2106），不是游戏自持；`WorkSource{10386 com.netease.onmyoji}` 只是「该 display 上 top app」的标签。同一时刻 `displayId:0` 有同形系统锁（标签 `com.ai.assistance.operit`）
   - 对「主屏能否被用户熄灭」：**不阻断**（超时看 `userActivity`，电源键走 `goToSleep`）→ 原先「假息屏」的担心是假象
@@ -95,6 +100,7 @@
   - 验证法：`input keyevent 26` 后连查 `dumpsys power | grep -E 'mWakefulness=|displayId:19'` 与 `cat /sys/power/wake_lock`（与 BG-21 一起做，省一次熄屏）
   - **本轮决策（用户，2026-11-15）**：先不改代码，先做基线实测（见 BG-21 预实验），拿到「有屏锁时 60s 的心跳 / 挂起计数」原始数据再决定是否采纳 `setSurface(null)`
   - 归属：B（定责已交付）→ 主 AI（决策）/ A（改代码，若采纳 setSurface 方案）
+  - **2026-11-15 决策（用户）**：**采纳** `setSurface(null)`（主屏熄屏时对虚拟屏停渲），**默认关**；此前「暂不采纳／先不改代码」的表态作废；归属：写手 A4（续棒）
 - [x] **BG-23 `--socket` 参数是假参数**（`openServer(String path)` 无视入参，恒 bind `ABSTRACT_NAME`）
   - 后果：① 换个 socket 名起第二实例必报 `Address already in use`；② `sFileSocket` 恒 false，`chmod666` 与文件 socket 分支是死代码
   - 归属：A3（写手位第 3 棒）；验收：`--socket x.a --cmd ping` 与 `--socket x.b --cmd ping` 可并存；不传时行为与现在一致
