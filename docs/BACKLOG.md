@@ -106,7 +106,9 @@
   - **本轮决策（用户，2026-11-15）**：先不改代码，先做基线实测（见 BG-21 预实验），拿到「有屏锁时 60s 的心跳 / 挂起计数」原始数据再决定是否采纳 `setSurface(null)`
   - 归属：B（定责已交付）→ 主 AI（决策）/ A（改代码，若采纳 setSurface 方案）
   - 状态（2026-11-15 实机）：`frames` 探针早已存在、无需新代码；`detach/attach` 已在**亮屏**下验证真停渲/真恢复（`docs/evidence/20261115-1230-BG-22-vdisplay-game-frames.md`）；**熄屏触发链路未验**（`ACTION_SCREEN_OFF` → detach 代码在但没跑过）
-  - **2026-11-15 决策（用户）**：**采纳** `setSurface(null)`（主屏熄屏时对虚拟屏停渲），**默认关**；此前「暂不采纳／先不改代码」的表态作废；归属：写手 A4（续棒）
+   - **2026-11-15 决策（用户）**：**采纳** `setSurface(null)`（主屏熄屏时对虚拟屏停渲），**默认关**；此前「暂不采纳／先不改代码」的表态作废；归属：写手 A4（续棒）
+   - **2026-11-15 排期（用户第三次定调）**：E1 熄屏实验**挪后**（必须用户在场辅助），本轮一次也不熄屏；**BG-22 本轮不合 main、不打 tag**，去留等前置清空后一并定。BG-29 已于同日以「无需实现」收尾，故现只剩 E1 这一个前置
+   - **E1 判据矩阵（已定稿，开跑前不许改）**：① `frames` 仍增 + 心跳连续（C 段 65/65、`maxGap ≤1500ms`）→ **有效**（detach 有省电收益）；② `frames` 停增 + 心跳连续 → **零收益**（该 revert）；③ `frames` 停增 + 心跳断/daemon 消失 → **不可判**（只记原始值，禁止据此下结论，需先修存活再重测）。采样必须由 daemon 侧落盘，**熄屏期间不轮询 shell**
   - 4-eyes 评审（P0 无阻塞，5×P1 + 3×P2）见 BG-28。
 - [x] **BG-23 `--socket` 参数是假参数**（`openServer(String path)` 无视入参，恒 bind `ABSTRACT_NAME`）
   - 后果：① 换个 socket 名起第二实例必报 `Address already in use`；② `sFileSocket` 恒 false，`chmod666` 与文件 socket 分支是死代码
@@ -131,8 +133,28 @@
   - P2 `DisplayEngine.java:150` — detach 重复调用仍回 true，日志误导；建议已摘除时回 false
   - 归属：写手 A4（合 main 前统一返工）；验收：8 条逐条落地 + `tools/gate.sh --static` 仍 PASS + 亮屏 detach/attach 复测不回归
 > 追加背景：本轮不改这些代码 —— BG-22 去留取决于熄屏实验（未做），现在改会让 evidence 与 commit 不再一一对应；故一律作为**合 main 前置**。
-- [ ] **BG-29 daemon 启动姿势应向 Shizuku 看齐：setsid + 切 cgroup + 切 mnt ns**
+   - **2026-11-15 D 的 4-eyes 复核：`REVIEW: PASS`（无崩溃级阻塞；合 main 前建议修 1–4）**，行号已按当前文件重定位（BACKLOG 上面引用的旧行号作废）：
+     - ① 成立 — `DisplayEngine.java:380/396` 的锁覆盖 `:386/:402` 的 binder 调用，与 `grab:284`、`framesOf:363` 共用；修法：先取 `final VirtualDisplay vd`，锁外 `setSurface`，或独立 `sSurfaceLock`
+     - ② 成立 — `DisplayEngine.java:198` `onFrame` 无锁写 `frames/latest/hasFrame`（`Entry` 无 volatile）；修法：三字段 volatile + `latest` 双缓冲换指针
+     - ③ 成立 — `KeepAliveService.kt:131` 只判 `==1`，`:160` `registerSurfaceReceiver` 无 else 注销；修法：`else unregisterSurfaceReceiver()`
+     - ④ 成立 — `KeepAliveService.kt:196/:206` 取首个 `displayId`，**mirror 并存时会摘错屏**；修法：按 `list` 的 `name` 匹配或校验仅一块
+     - ⑤ 成立 — `DisplayEngine.java:377` 注释把 `mHoldingDisplaySuspendBlocker` 写成实测；修法：降级为「推断/待验」，与 `evidence:69-75` 对齐
+     - ⑥ 成立 — `KeepAliveService.kt:180` 缺 `RECEIVER_NOT_EXPORTED`（系统广播可豁免，但 A14 lint 报）
+     - ⑦ **PASS** — 重复 detach 回 true 属幂等语义，仅建议加 `"already":true` 区分
+     - ⑧ **新发现（P2）** — detach 期间若 `destroy()/releaseAll()` 已 release，`attach` 会拿已释放的 `Surface` 调 `setSurface` → 异常被 catch 吞掉、返回 false（不崩但静默失败），建议加 `entry.released` 判定；另 `SCREEN_ON` 广播在 app 被冻时投递可能延迟 → 亮屏后 attach 迟到（待实测）
+     - 判定：`vdisplay_detach` 若改成**默认开**，①②③④ 必修；若维持默认关，可在合 main 前只做 ⑤⑥（文档/告警级）
+   - **流程事件（须留痕）**：D 在取行号时执行了 `git checkout 656ec1a`（detached HEAD），7 秒后自行切回。主 AI 已按磁盘实况复核：HEAD 回 `f03e928`、`git status -sb` 无改动、`git reflog` 两条记录在案（`06:51:31` 切出 / `06:51:38` 切回），**未丢文件**。禁令重申：子 AI 一律不得 `checkout`/`reset`/`merge`/`rebase`
+- [x] **BG-29 daemon 启动姿势应向 Shizuku 看齐：setsid + 切 cgroup + 切 mnt ns** —— **已关闭：实测前提不成立，无需实现**
   - 依据：`docs/research/20261116-android-background-keepalive.md` 表 B #1；Shizuku `manager/src/main/jni/starter.cpp`（`start_server`/`switch_cgroup`，未取行号）
   - 目的：让 uid 0 daemon 彻底离开 `/apps/` cgroup，避开 cached-app freezer 与 lmkd 波及（AOSP 侧目前「无 `ProcessRecord` 即不参与冻结」`OomAdjuster.java:4063-4091`，但 ColorOS 私有逻辑 `[未验]`）
   - 验收：daemon 起来后 `cat /proc/<pid>/cgroup` 不在 `/apps/`；后台静置 10 分钟后 `ps` 仍在且 `frames` 仍可读
-  - 归属：A4（写手）/ B（诊断）；前置：BG-22 取舍先定
+   - 归属：A4（写手）/ B（诊断）；前置：BG-22 取舍先定
+   - **关闭依据（2026-11-15 实测，`docs/evidence/20261115-1452-BG-29-cgroup-probe.md`）**：uid 0 daemon 六行 cgroup **全在 `/`**（`5:freezer:/` `4:memory:/` `3:cpuset:/` `2:cpu:/` `1:blkio:/` `0::/`）、`oom_score_adj=-1000`、ppid=`/system/bin/sh`；对照 app 是 `0::/uid_10252/pid_5207`（per-process 组，内含 `cgroup.freeze`）。本机**无 `/dev/cg2_bpf`**、`cgroup.controllers` 为空、`/sys/fs/cgroup` 下 312 个 `uid_*` 无 `apps/` → Shizuku 式 `switch_cgroup` 在本机是 no-op
+   - **判据修正（重要）**：原验收「`cgroup` 不在 `/apps/`」不可用 —— v1 的 `freezer:` 行对 app 与 daemon 都显示 `/`（零区分度），只看 `memory:` 行也只能证明 memory 归属。**正确判据是 `0::` 行是否形如 `/uid_x/pid_y`**
+   - 仍值得抄、但与 BG-29 动机无关的项（`setsid` + 父进程退出 + `--nice-name`）→ 归入 BG-30 一并处理
+- [ ] **BG-30 启动自检覆盖面不足：只读 `:memory:` 一行，漏掉 v2 per-process 组**
+   - 现状：`poc/displayserver/src/org/onmyoji/oas/server/Main.java:180-186` 只用 `memoryCgroupOf()` 判断「自己是否在 `/apps/`」
+   - 后果：若 daemon 被 app 域进程 fork 起、memory 恰为 `/` 而 v2 行在 `/uid_x/pid_y`，自检**会放行**，随后静默被冻（正是自检要防的失败）
+   - 修法：主判据改「`0::` 行必须是 `/`」，`memory:` 行降为附带日志；顺带补 `setsid` + `--nice-name`（可识别进程名，便于 `ps` 自检）
+   - 验收：单测/脚本断言三种 cgroup 文本（全 `/` / `/apps/uid_x` / `/uid_x/pid_y`）判定正确；`tools/gate.sh --static` PASS
+   - 归属：A4（写手）；前置：无（不依赖熄屏实验），但**本轮不动代码**
