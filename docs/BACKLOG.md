@@ -101,9 +101,12 @@
   - **定责修正**：持锁者是 `system_server`（uid=1000 pid=2106），不是游戏自持；`WorkSource{10386 com.netease.onmyoji}` 只是「该 display 上 top app」的标签。同一时刻 `displayId:0` 有同形系统锁（标签 `com.ai.assistance.operit`）
   - 对「主屏能否被用户熄灭」：**不阻断**（超时看 `userActivity`，电源键走 `goToSleep`）→ 原先「假息屏」的担心是假象
   - 对「整机不休眠 / 熄屏后自己复亮」：**真阻断**（SCREEN_BRIGHT 计入 `mWakeLockSummary`，`mHoldingDisplaySuspendBlocker=true`）
+  - ⚠️ **2026-11-15 E3 证伪修正**：上面这条是在**主屏亮着**时取的；熄屏态三组实测（无虚拟屏 / 虚拟屏 attach / detach）**全部** `mWakefulness=Dozing`、`mHoldingDisplaySuspendBlocker=false`、`wake_lock=[]`，且 `dumpsys power` 里连 `displayId:0` 的 `SCREEN_BRIGHT` 行都没有 → **熄屏时虚拟屏根本不持这把锁，「虚拟屏让整机不睡」在熄屏态不成立**（`docs/evidence/20261115-1548-BG-22-E3-screenoff-lock.md`）
   - 取舍结论（**2026-11-15 经用户质疑后复查修正**）：主屏熄屏时对虚拟屏 `setSurface(null)` / `release()`，代价是游戏停渲。原写「**无公开 API 可走**」表述不准确，已改为：**官方文档明确把「摘除 backing surface」定义为等价关屏**（`VirtualDisplay#setSurface` 原文：*"Detaching the surface that backs a virtual display has a similar effect to turning off the screen."*，API 20 起）；隐藏路径 `SurfaceControl.setDisplayPowerMode` 是 `public static @hide`（`SurfaceControl.java:2060-2068`），但**拿不到虚拟屏的 token**（`dumpsys SurfaceFlinger --display-id` 只列 HWC display 0），且 SF 侧最终走 HWC `setPowerMode`（`SurfaceFlinger.cpp:5600/5603`），对虚拟屏**预期 no-op** → 没有比 `setSurface(null)` 更便宜的第二条路
   - **E2 实测（2026-11-15 15:41–15:47，`docs/evidence/20261115-1543-BG-22-E2-detach-power.md`）**：detach 后 `SCREEN_BRIGHT_WAKE_LOCK 'WindowManager/displayId:28'` **整行消失**并留下 `REL … displayId:28`（15:43:16.113）、`state OFF`、viewport `isActive=false`、frames 479→479 冻结；`attach` 后锁重新 ACQ、`state ON`、frames 恢复 905 → **生产方案在电源侧确有效，不只是停渲**
   - E2 遗留：`mHoldingDisplaySuspendBlocker` 在主屏亮时恒 `true`（主屏自己也持锁）→ 「detach 后整机能否真睡」必须熄屏态测（E3，见下）
+  - **E3 实测（2026-11-15 15:46–15:48，`docs/evidence/20261115-1548-BG-22-E3-screenoff-lock.md`）—— 推翻原动机**：同一次熄屏窗口内三组（无虚拟屏 / 虚拟屏 attach + 游戏在渲 / detach）**全部** `mWakefulness=Dozing`、`mHoldingDisplaySuspendBlocker=false`、`wl=[]`、`SCREEN_BRIGHT` 行「无」→ **detach 的收益只剩「熄屏停渲、省 GPU/CPU」，换不来更深休眠**
+  - **取舍论证须按 E3 重写**：代价（游戏停摆 + 广播触发 + BG-28 四条 P1）不变、收益变小；若坚持合入，必须给出新的可量化收益判据（如同一 65s 的 CPU 时间对比），否则应判「零收益 → revert」
   - 验证法：`input keyevent 26` 后连查 `dumpsys power | grep -E 'mWakefulness=|displayId:19'` 与 `cat /sys/power/wake_lock`（与 BG-21 一起做，省一次熄屏）
   - **本轮决策（用户，2026-11-15）**：先不改代码，先做基线实测（见 BG-21 预实验），拿到「有屏锁时 60s 的心跳 / 挂起计数」原始数据再决定是否采纳 `setSurface(null)`
   - 归属：B（定责已交付）→ 主 AI（决策）/ A（改代码，若采纳 setSurface 方案）
