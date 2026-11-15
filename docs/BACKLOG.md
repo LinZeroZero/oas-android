@@ -131,3 +131,8 @@
   - P2 `DisplayEngine.java:150` — detach 重复调用仍回 true，日志误导；建议已摘除时回 false
   - 归属：写手 A4（合 main 前统一返工）；验收：8 条逐条落地 + `tools/gate.sh --static` 仍 PASS + 亮屏 detach/attach 复测不回归
 > 追加背景：本轮不改这些代码 —— BG-22 去留取决于熄屏实验（未做），现在改会让 evidence 与 commit 不再一一对应；故一律作为**合 main 前置**。
+- [ ] **BG-29 daemon 启动姿势应向 Shizuku 看齐：setsid + 切 cgroup + 切 mnt ns**
+  - 依据：`docs/research/20261116-android-background-keepalive.md` 表 B #1；Shizuku `manager/src/main/jni/starter.cpp`（`start_server`/`switch_cgroup`，未取行号）
+  - 目的：让 uid 0 daemon 彻底离开 `/apps/` cgroup，避开 cached-app freezer 与 lmkd 波及（AOSP 侧目前「无 `ProcessRecord` 即不参与冻结」`OomAdjuster.java:4063-4091`，但 ColorOS 私有逻辑 `[未验]`）
+  - 验收：daemon 起来后 `cat /proc/<pid>/cgroup` 不在 `/apps/`；后台静置 10 分钟后 `ps` 仍在且 `frames` 仍可读
+  - 归属：A4（写手）/ B（诊断）；前置：BG-22 取舍先定

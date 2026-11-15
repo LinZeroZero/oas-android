@@ -419,6 +419,7 @@ app 只保留 UI + 前台服务 + socket 客户端。
   - 【新】`nc -U @name` **不支持抽象命名空间**（直接 ENOENT），连 daemon 的抽象 socket 只能用 `KbClient`
   - 【新】proot 里**写不了 `dist/`**（`Permission denied`），要落盘到那个目录得走 root shell 拷
   - BG-22 已过 4-eyes 评审：P0 无阻塞；5×P1 + 3×P2 全部记入 BACKLOG BG-28（合 main 前置，本轮不改代码）。
+  - 虚拟屏方向由建屏宽高决定（`create oas-game 1280 720 240` 即横屏），与系统「自动旋转」无关；`grab` 回来 `bytes=3686416` 正好等于 `1280×720×4+16` 即证明拿到的是横屏整帧（实测）。
 
 ## 十三、许可
 
