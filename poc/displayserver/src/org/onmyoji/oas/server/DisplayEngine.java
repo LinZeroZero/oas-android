@@ -364,52 +364,12 @@ public final class DisplayEngine {
         Entry entry = mEntries.get(displayId);
         return entry == null ? -1 : entry.frames;
     }
+
     public synchronized Entry get(int displayId) {
         return mEntries.get(displayId);
     }
 
-    /**
-     * BG-22：把这块虚拟屏的**输出端**摘掉（`setSurface(null)`），屏本身留着。
-     *
-     * 与 `destroy()` 的区别：这里不 close reader、不 release entry.surface，
-     * 所以 {@link #attach(int)} 能把同一个 Surface 接回去继续出帧。
-     * 用途：主屏熄屏时停渲，避免虚拟屏一直挂着让 system_server 为它持
-     * SCREEN_BRIGHT 锁（BG-21 实测 `mHoldingDisplaySuspendBlocker` 恒 true）。
-     * 代价：摘面期间 VirtualDisplay 没有输出端，画面会停（用户已知情接受）。
-     */
-    public synchronized boolean detach(int displayId) {
-        Entry entry = mEntries.get(displayId);
-        if (entry == null || entry.virtualDisplay == null) {
-            return false;
-        }
-        try {
-            entry.virtualDisplay.setSurface(null);
-            Ln.i("detach displayId=" + displayId + "（停渲，reader/surface 保留）");
-            return true;
-        } catch (Throwable t) {
-            Ln.w("detach displayId=" + displayId + " 失败: " + t);
-            return false;
-        }
-    }
-
-    /** BG-22：把 {@link #detach(int)} 摘掉的 Surface 接回去（复用同一个 ImageReader 的 Surface）。 */
-    public synchronized boolean attach(int displayId) {
-        Entry entry = mEntries.get(displayId);
-        if (entry == null || entry.virtualDisplay == null || entry.surface == null) {
-            return false;
-        }
-        try {
-            entry.virtualDisplay.setSurface(entry.surface);
-            Ln.i("attach displayId=" + displayId + "（恢复出帧）");
-            return true;
-        } catch (Throwable t) {
-            Ln.w("attach displayId=" + displayId + " 失败: " + t);
-            return false;
-        }
-    }
-
     public synchronized boolean destroy(int displayId) {
-
         Entry entry = mEntries.remove(displayId);
         if (entry == null) {
             return false;
