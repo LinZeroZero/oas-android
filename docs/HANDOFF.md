@@ -393,8 +393,8 @@ app 只保留 UI + 前台服务 + socket 客户端。
 ## 十二、接力点（写手交棒用）
 > 制度见 `docs/WORKFLOW.md §1`：**一个写手位，可以换人，不可并行**。换棒时本节整节替换，不追加历史；**详细内容写在交接包里**（`docs/handoff/`）。
 
-- **分支**：`main`，head = `79d5f13`（PR #21 已 squash 合并 = BG-32 `tools/hang_check.sh` 入库），与 `origin/main` 同一 sha
-- **在飞分支**：`docs/e1-handoff-role`（`886c8a6` 流程条文 + 本交接包提交），待推送 + 开 PR + 门禁绿后合并
+- **分支**：`main`，head = `7854c3f`（PR #21 = BG-32 工具入库 `79d5f13`；PR #22 = 交接包 E 制度 + 主 AI 交接包），与 `origin/main` 同一 sha，ahead=0
+- **在飞分支**：无（`docs/e1-handoff-role` 已随 #22 合并；工作区干净，`app/build` 已清、体积 165M）
 - **主 AI 交接包（当前）**：`docs/handoff/20261115-1158-main-ai.md`（**调度位换人先读这个**；本棒主 AI 已压缩 3 次）
 - **写手棒交接包（上一份，已归档）**：`docs/handoff/archive/20261115-0130-bg22-setSurface.md`（BG-22，A4 续棒用；BG-22 已结案、不进 main）
 - **换棒判据**：上下文接近压缩阈值即换棒（256K × 0.7 ≈ 179K 词元，或消息数到 20 条触发总结）；已触发过一次压缩也换
