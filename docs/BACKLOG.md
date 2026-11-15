@@ -97,7 +97,10 @@
   - **纪律**：预实验数据一律不得写进「通过/不通过」结论，只用于校准方法与阈值；预实验失败也算有效产出（避免跑完 60s 才发现测不到）
   - 归属：A4（执行）+ 主 AI（复核数字、定 BG-22 取舍、写 evidence）
   - **2026-11-15 状态**：pilot 已证伪「灭屏前后 `suspend_stats/success` 差值」判据（`docs/evidence/20261115-0057-BG-21-pilot.md`，G1/G2/G3 全绿）；**官方口径暂不改**，先用复现数据（A4 的 BG-22 实验中 feature off 组）验证新口径「真熄屏 65s → `n/4=4/4` 且 C 段 `maxGap ≤1500ms`」再定案
-- [ ] **BG-22 `displayId:19` 的 `SCREEN_BRIGHT_WAKE_LOCK` 定责与取舍** —— 定责已完成（B），**待真机验证 + 取舍决策**
+- [x] **BG-22 `displayId:19` 的 `SCREEN_BRIGHT_WAKE_LOCK` 定责与取舍** —— **已结案：不采纳，detach/attach 三块已于 2026-11-15 回滚（`1e131de`）**
+  - **用户拍板（2026-11-15 17:3x）**：`detach`（熄屏时把虚拟屏输出端摘掉）**砍掉**。理由：① 灭屏挂机（OAS+阴阳师继续运行）**不依赖**摘面，E1 已证不摘面时熄屏仍持续出帧（1994→2283、心跳 65/65，`docs/evidence/20261115-1515-BG-22-E1-screenoff.md`）；② 摘面的效果恰恰是**画面停止刷新**（本轮 frames 8188→8188 冻结），与「继续运行」体感相反；③ 熄屏本身已省掉屏幕功耗，摘面额外省的只是「少合成一帧」量级，不值 BG-28 四条 P1 + 熄屏广播链路 + 停渲风险；④ 原动机已被 E3 证伪（熄屏态不持 `SCREEN_BRIGHT`、`mHoldingDisplaySuspendBlocker=false`、`wl=[]`）。
+  - **A1/A1-v2 实测（判据口径争议留档）**：两轮实测**都没测出可复现收益** —— A1（n=1，daemon+游戏）降幅 −14.8%；A1-v2（交叉 off/on/on/off，加采 `surfaceflinger`/`system_server`）表面 −27.4% 但两两对照方向相反（−31% / +27%）、时间漂移压倒处理效应 → 判「不可判」。证据：`docs/evidence/20261115-1640-BG-22-A1-cpu.md`、`docs/evidence/20261115-1700-BG-22-A1v2-crossover.md`。
+  - **保留的能力**：`stats`/`grab`/`create`/`destroy`/`kb run` 与熄屏挂机全部不受影响（本次回滚只删 detach/attach 与广播门控）。
   - **定责修正**：持锁者是 `system_server`（uid=1000 pid=2106），不是游戏自持；`WorkSource{10386 com.netease.onmyoji}` 只是「该 display 上 top app」的标签。同一时刻 `displayId:0` 有同形系统锁（标签 `com.ai.assistance.operit`）
   - 对「主屏能否被用户熄灭」：**不阻断**（超时看 `userActivity`，电源键走 `goToSleep`）→ 原先「假息屏」的担心是假象
   - 对「整机不休眠 / 熄屏后自己复亮」：**真阻断**（SCREEN_BRIGHT 计入 `mWakeLockSummary`，`mHoldingDisplaySuspendBlocker=true`）
@@ -130,7 +133,9 @@
   - 已试过并失败：设备无 `sqlite3`；proot python3 + sqlite 3.45.1 直改 `chats."group"`（先 `chmod 666` 三件套）→ 当场 `integrity_check=ok`、汇总正确，但 App 运行时把内存旧行整行写回，杀进程重启仍回退（`None 1 / OAS安卓端适配 9 / 子任务 3`）
   - 现状处置（用户决策 2026-11-15）：**不追分组**，靠 `OAS-<角色><序号> <任务>` 标题前缀识别接力会话；需归组时由用户手动移动
   - 归属：工具侧限制（非本项目代码问题）；若 Operit 后续提供设置分组的 API，再回来关掉这条
-- [ ] **BG-28 BG-22 合 main 前置：4-eyes 评审遗留（P0 无阻塞，5×P1 + 3×P2）**
+- [x] **BG-28 BG-22 合 main 前置：4-eyes 评审遗留（P0 无阻塞，5×P1 + 3×P2）** —— **已关闭：BG-22 detach 已被用户拍板砍掉（2026-11-15），这些 P1 的宿主代码随 `1e131de` 一并移除，前置不再需要**
+  - 关闭依据：`DisplayEngine.detach/attach`、`SocketServer.surface`、`KeepAliveService` 广播门控三块已回滚；`server.jar` 用回滚后源码重建（28957→28650 B）；`assembleDebug` BUILD SUCCESSFUL、`tools/gate.sh` 与 `--static` 双 PASS。
+  - 若将来重新引入 detach（例如为其他需求），①②③④⑤⑥⑧ 仍需按下面原文逐条处理 —— 故本条不删，只关闭。
   - P1 `poc/displayserver/src/org/onmyoji/oas/server/DisplayEngine.java:162/178` — detach/attach 在引擎级 `synchronized(this)` 内做 binder 调用，同一把锁被 `grab`(:284，含整帧写盘) 与心跳 `framesOf`(:145) 共用 → 心跳可能迟到，被 BG-19 误判「冻住」；修法：binder 调用移出全局锁，或改 entry 级锁
   - P1 `DisplayEngine.java:198` — `onFrame` 无锁，与 `grab`/`detach` 并发读写 `entry.latest` / `hasFrame` / `frames`（均非 volatile）→ 可见性与撕裂；修法：这些字段改 `volatile`，或统一走锁
   - P1 `app/src/main/java/org/onmyoji/oas/android/service/KeepAliveService.kt:131-133` + `:160` — 二次 `onStartCommand` 不带 extra 时不会注销已注册的 receiver → 「默认关」只在冷启动成立；修法：每次 `onStartCommand` 先 `unregister`，再按 extra 决定是否注册
