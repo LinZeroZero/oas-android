@@ -1,6 +1,6 @@
 --- a/vendor/oas/module/device/method/android_impl.py
 +++ b/vendor/oas/module/device/method/android_impl.py
-@@ -0,0 +1,208 @@
+@@ -0,0 +1,221 @@
 +"""Android 本机通道（P0-B 最小闭环）：虚拟屏截图 + 定向点击。
 +
 +链路（都是仓库里已有的设施，这里只做接线，不另起一套 subprocess su）：
@@ -44,8 +44,20 @@
 +DEVICE_CLASS = 'org.onmyoji.oas.android.root.Device'
 +DISPLAY_SERVER_CLASS = 'org.onmyoji.oas.android.root.DisplayServer'
 +
-+# 虚拟屏名以它开头（DisplayServer.create 默认 name='oas'，daemon 建的多半是 oas-xxx）
-+VDISPLAY_PREFIX = 'oas-'
++# 虚拟屏名：2026-11-15 22:13 实测 daemon list = {"displayId":34,"name":"oas"}，
++# 名字就是 **oas**（没有连字符），所以判定不能写死 'oas-' 前缀；同时容忍 oas-xxx / oas_xxx。
++VDISPLAY_NAME = 'oas'
++
++
++def _is_vdisplay_name(name):
++    """name == 'oas' 或其变体（oas-xxx / oas_xxx）都算 OAS 虚拟屏。"""
++    if not name:
++        return False
++    return (
++        name == VDISPLAY_NAME
++        or name.startswith(VDISPLAY_NAME + '-')
++        or name.startswith(VDISPLAY_NAME + '_')
++    )
 +
 +
 +def _jclass(name):
@@ -112,15 +124,16 @@
 +                display_id = int(item.get('displayId', -1))
 +            except (TypeError, ValueError):
 +                continue
-+            if display_id > 0 and str(item.get('name', '')).startswith(VDISPLAY_PREFIX):
++            name = str(item.get('name', ''))
++            if display_id > 0 and _is_vdisplay_name(name):
 +                self._android_display_id = display_id
 +                logger.attr('AndroidDisplay', display_id)
 +                return display_id
 +
 +        # 不静默返回 -1：宁可在第一次截图时炸掉，也不要拿着错误 id 一路跑
 +        raise RuntimeError(
-+            '找不到 OAS 虚拟屏：daemon list 里没有 displayId>0 且 name 以 %r 开头的屏。'
-+            '请先建屏，或显式设环境变量 %s' % (VDISPLAY_PREFIX, ENV_DISPLAY_ID)
++            '找不到 OAS 虚拟屏：daemon list 里没有 displayId>0 且 name 为 %r（或 %r-*/*_ 变体）的屏。'
++            '请先建屏，或显式设环境变量 %s' % (VDISPLAY_NAME, VDISPLAY_NAME, ENV_DISPLAY_ID)
 +        )
 +
 +    # ------------------------------------------------------------------ #
