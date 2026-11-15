@@ -11,7 +11,7 @@
 - 目标：**阴阳师跑在虚拟显示器上、主屏照常用手机**，脚本按恒定 **1280×720** 画布识别/点击，**绝不改物理分辨率**。
 - 现在到哪了：阶段 0 / 阶段 1 PoC-A（**7/7**，抓帧 p50 **5.0ms**）/ 阶段 2 前半（Chaquopy **CPython 3.13.16**、`cv2.py` shim **32/32**、`oas_device.py`、`android_entry.py`）/ ADR-0001 三件套（BG-17 daemon 环境自检、BG-18 PARTIAL 锁 + reaper、BG-19 `kb run` 前移）**均已真机验证**；`tools/hang_check.sh`（BG-32 长时挂机一键检测）已入库（PR #21 squash `79d5f13`）。
 - **最大缺口（下一步就是这个）**：上游 OAS 的插拔点还没接 —— `vendor/` 下**没有** `android_impl.py`，`screenshot_methods['android']` / `click_methods['android']` **未注册**（对应 §六 待办「阶段 2 第 9 项」）。也就是说「壳 + 通道 + 采集 + 点击」全通，但**还不会自动打本**。
-- 全量待办看 `docs/BACKLOG.md`（main 基线实查：`[x]` 13 项 / `[ ]` 14 项）。**调度位换人先读 `docs/handoff/20261115-1158-main-ai.md`**（主 AI 交接包，七要素 + 会话名册 + 排除记录 + 待办优先级）。
+- 全量待办看 `docs/BACKLOG.md`（main 基线实查：`[x]` 13 项 / `[ ]` 14 项）。**调度位换人先读 `docs/handoff/20261115-1339-main-ai.md`**（主 AI 交接包，七要素 + 会话名册 + 排除记录 + 待办优先级）。
 - 一条必须先知道的结论：**后台进程会被系统的 cached-app freezer 冻住**（阶段 0 实测冻了 36 秒）；Realme/ColorOS 的 Hans freezer **连 FGS 也不豁免**。对策见 §十一 与 ADR-0001（PARTIAL 语义锁 + 心跳/调度前移 daemon）。
 - 想先跑一遍现状验证：`pm install -r -t dist/oas-android-debug.apk` → `am start -n org.onmyoji.oas.android/.MainActivity --ei poc_display 1` → 80 秒后看 `display_poc.txt`，应仍是 **7/7**。
 
@@ -394,8 +394,8 @@ app 只保留 UI + 前台服务 + socket 客户端。
 > 制度见 `docs/WORKFLOW.md §1`：**一个写手位，可以换人，不可并行**。换棒时本节整节替换，不追加历史；**详细内容写在交接包里**（`docs/handoff/`）。
 
 - **分支**：`main`，head = **以 `git rev-parse --short main` 现查为准**（不要引用本文里的 sha，会自指过期；本行写入时点 = `41de9b6`）：PR #21 = BG-32 工具入库、PR #22 = 交接包 E 制度 + 首份主 AI 交接包、PR #23 = 交接包随合并自纠
-- **在飞分支**：无未合并工作（工作区干净，`app/build` 已清、体积 165M，`dist/` 两个 APK 均 48891504 B）。**但陈旧分支仍在**：远端 5 个已并入的 head（`docs/e1-handoff-role`、`docs/e1-handoff-sync`、`docs/handoff-no-shas`、`feat/bg32-hang-tool`、`feat/bg22-setSurface`）+ 本地 7 个非 main 分支（同上 5 个 + `backup/bg22-docs` 越位产物备份 + `feat/bg32-hang-check`），**清理待用户授权**——内容均已随 PR #21–#24 进 main，按血统看不算 merged 是 squash 合并所致
-- **主 AI 交接包（当前）**：`docs/handoff/20261115-1158-main-ai.md`（**调度位换人先读这个**；本棒主 AI 已压缩 3 次）
+- **在飞分支**：无未合并工作（工作区干净，`app/build` 已清、体积 163M，`dist/` 两个 APK 均 48891504 B）。陈旧分支**已于 2026-11-15 全部清理**：远端只剩 `main`、本地只剩 `main`（删了 5 个远端 head + 7 个本地分支，含越位产物备份 `backup/bg22-docs`）
+- **主 AI 交接包（当前）**：`docs/handoff/20261115-1339-main-ai.md`（**调度位换人先读这个**；上一棒 `66fc5ca4…` 交棒时上下文 71%，旧包 1158 已删除，历史见 `git log -- docs/handoff/`）
 - **旧交接包**：按用户 2026-11-15 决定「只留最新一份」，`docs/handoff/archive/` 已清空（历史见 `git log -- docs/handoff/`）；BG-22 结案记录以 `docs/BACKLOG.md` 状态行为准
 - **换棒判据**：上下文接近压缩阈值即换棒（256K × 0.7 ≈ 179K 词元，或消息数到 20 条触发总结）；已触发过一次压缩也换
 - **写手位交接**：A（`519dbd40…`）→ A2（`8833100c-271d-4988-b752-ebce0f2321ca`）→ A3（`ca2b0219-…`，BG-23）→ A4（`3464a2d7-9d14-4b05-9ee2-35dcd7f6e265`，BG-21/BG-22，已退休不复用）→ **A5（`ca2b0219-0992-4e48-996d-dc9fcf071460`）为当前唯一代码位**
