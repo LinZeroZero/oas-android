@@ -109,6 +109,9 @@
    - **2026-11-15 决策（用户）**：**采纳** `setSurface(null)`（主屏熄屏时对虚拟屏停渲），**默认关**；此前「暂不采纳／先不改代码」的表态作废；归属：写手 A4（续棒）
    - **2026-11-15 排期（用户第三次定调）**：E1 熄屏实验**挪后**（必须用户在场辅助），本轮一次也不熄屏；**BG-22 本轮不合 main、不打 tag**，去留等前置清空后一并定。BG-29 已于同日以「无需实现」收尾，故现只剩 E1 这一个前置
    - **E1 判据矩阵（已定稿，开跑前不许改）**：① `frames` 仍增 + 心跳连续（C 段 65/65、`maxGap ≤1500ms`）→ **有效**（detach 有省电收益）；② `frames` 停增 + 心跳连续 → **零收益**（该 revert）；③ `frames` 停增 + 心跳断/daemon 消失 → **不可判**（只记原始值，禁止据此下结论，需先修存活再重测）。采样必须由 daemon 侧落盘，**熄屏期间不轮询 shell**
+   - **E1 执行结果（2026-11-15 15:12–15:16，`docs/evidence/20261115-1515-BG-22-E1-screenoff.md`）**：`n/4 = 4/4`；C 段 65/65 行、`maxGap 1001ms`、frames **1994→2283（+289）** → **判据命中 ①：有效**（`setSurface(null)` 有省电收益）。熄屏窗口 100% 落在 C 段内（`C_start + 8.2s` 熄屏、C 段结束后 18s 唤醒）
+   - **数据缺口（必须与结论一起看）**：`mHoldingDisplaySuspendBlocker` **熄屏期间未采样**（只在唤醒后读到 `true`）→ 「detach 能否解除该锁」仍未验，BG-28 ⑤ 的注释必须保持「假设」；`suspend_stats/success` 1165→1165（本机不进 suspend，该口径在本机不可用，仅作记录项）
+   - **待用户拍板**：判据命中「有效」→ 既定路径是「修 BG-28 ①②③④ → 合 main」；本轮口径仍是**不合 main、不打 tag**，用户明确选择后才动 git
   - 4-eyes 评审（P0 无阻塞，5×P1 + 3×P2）见 BG-28。
 - [x] **BG-23 `--socket` 参数是假参数**（`openServer(String path)` 无视入参，恒 bind `ABSTRACT_NAME`）
   - 后果：① 换个 socket 名起第二实例必报 `Address already in use`；② `sFileSocket` 恒 false，`chmod666` 与文件 socket 分支是死代码
@@ -158,3 +161,12 @@
    - 修法：主判据改「`0::` 行必须是 `/`」，`memory:` 行降为附带日志；顺带补 `setsid` + `--nice-name`（可识别进程名，便于 `ps` 自检）
    - 验收：单测/脚本断言三种 cgroup 文本（全 `/` / `/apps/uid_x` / `/uid_x/pid_y`）判定正确；`tools/gate.sh --static` PASS
    - 归属：A4（写手）；前置：无（不依赖熄屏实验），但**本轮不动代码**
+- [ ] **BG-31 主屏「自动旋转」在实验收尾时自行打开 —— 来源未定责（现场监视已部署）**
+  - 现象：`RotationHistory` 两簇旋转（`12:52:13~12:52:21` 六条；`15:15:32.528` 与 `15:15:35.581` 两条），责任源全为 `com.ai.assistance.operit/.ui.main.MainActivity`、`SCREEN_ORIENTATION_UNSPECIFIED`、`mode=USER_ROTATION_FREE`；用户当时看到「自动旋转」被点亮后手动关闭
+  - 已排他：① 仓库 2706 文件 **0 处**写旋转（`accelerometer_rotation\|setRequestedOrientation\|screenOrientation\|user_rotation\|SCREEN_ORIENTATION` 仅命中 `docs/HANDOFF.md` 文档）；② 本机 `monkey` **无 `--pct-rotation`** 事件源，生成不出旋转事件；③ `setUserRotation(FREE)` 不持久化，而两次提交都是 FREE ⇒ 更像「确有进程写过开关」
+  - 复现对照（两次均**阴性**）：亮屏态、锁屏态各用同一 `SET_TIMER` intent 跑一次（锁屏态确实拉起了 `TimerAlertFullScreen` + `keyguardGoingAway`），`accelerometer_rotation` / `user_rotation` / `mUserRotationMode` 全程未变；差异点在于那两次手机是横握（`sensor=ROTATION_90`）才会真提交旋转
+  - 现场监视（实验期旁路，已部署）：`/data/local/tmp/rotwatch.sh`（0.6s 一拍，只查 settings；变化时快照 `mCurrentFocus` / `mFocusedApp` / `RotationHistory` / 最近 wm 事件）+ `logcat -b all … -f /data/local/tmp/rotcap.log`（4 MB × 4 滚动）
+  - 判定口径：出现 `SETTING_CHANGE A=0→A=1` ⇒ 有进程写开关（同时看当时前台 Activity）；只有 `MODE … USER_ROTATION_FREE` 而 `A` 不变 ⇒ 窗口管理器临时 FREE，非写设置
+  - 影响面：**不影响 E1 采集值**（两次旋转都在 C 段结束之后）；但会打扰主屏使用，需定责后收口
+  - 用户边界（2026-11-15）：**不要再查 Scene**；改为「下次任务运行时由监视器抓现场」
+  - 归属：B（只读诊断，读监视产物）
