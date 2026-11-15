@@ -10,8 +10,8 @@
 
 | 类型 | 文件名 | 谁读 | 例子 |
 |---|---|---|---|
-| 写手棒交接包 | `YYYYMMDD-HHMM-<BG号>-<slug>.md` | 接棒的写手会话 | `20261115-0110-bg21-c-phase.md` |
-| 主 AI 交接包 | `YYYYMMDD-HHMM-main-ai.md` | 接任的调度会话（上下文压缩/换人时） | `20261115-0150-main-ai.md` |
+| 写手棒交接包 | `YYYYMMDD-HHMM-<BG号>-<slug>.md` | 接棒的写手会话 | `archive/20261115-0130-bg22-setSurface.md`（已归档示例） |
+| 主 AI 交接包 | `YYYYMMDD-HHMM-main-ai.md` | 接任的调度会话（上下文压缩/换人时） | `20261115-1158-main-ai.md`（**当前**） |
 
 主 AI 交接包多写三块：会话名册（chat_id 实查）、排除记录全文、待办优先级；**不要把 PAT 等密钥写进去**（仓库是 public）。
 

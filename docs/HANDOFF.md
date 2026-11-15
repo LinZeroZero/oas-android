@@ -9,14 +9,11 @@
 ## 零、30 秒读懂 + 下一步
 
 - 目标：**阴阳师跑在虚拟显示器上、主屏照常用手机**，脚本按恒定 **1280×720** 画布识别/点击，**绝不改物理分辨率**。
-- 现在到哪了：阶段 0 / 阶段 1 PoC-A 已完成（7/7）；**阶段 2：cv2 shim 自测 32/32、无头入口与异常兜底已修好、前台服务 + WakeLock 已上真机**。
-- **当前卡点**：四段验证 C 段（息屏）失败 —— 根因是 **Realme/ColorOS 的 Hans freezer 在熄屏后冻住 app 进程，FGS 不豁免**；同期 daemon 侧 `frames` 仍在增长，**合成层没问题**。证据与两条候选路线见 **§十一**。
-- 下一步唯一入口：**在「设备侧豁免（电池白名单 / 后台允许）」与「把心跳与调度前移到 daemon」之间二选一**（§十一 末）。
-- 一条必须先知道的结论：**后台进程会被系统的 cached-app freezer 冻住**（阶段 0 实测冻了 36 秒）。
-  PoC-A 的 daemon 不受影响（`app_process` 没有 process record），但**Python 识别线程跑在 app 进程里，仍会被冻** →
-  真后台挂机必须先做**前台服务**，见「五、关键新发现 B」。
-- **新对话第一件事**：读 `docs/BACKGROUND.md`（阶段 1 全部结论），然后直接开 **P1-4 前台服务**。
-  想先跑一遍现状验证：`pm install -r -t dist/oas-android-debug.apk` → `am start ... --ei poc_display 1` → 80 秒后看 `display_poc.txt`，应仍是 **7/7**。
+- 现在到哪了：阶段 0 / 阶段 1 PoC-A（**7/7**，抓帧 p50 **5.0ms**）/ 阶段 2 前半（Chaquopy **CPython 3.13.16**、`cv2.py` shim **32/32**、`oas_device.py`、`android_entry.py`）/ ADR-0001 三件套（BG-17 daemon 环境自检、BG-18 PARTIAL 锁 + reaper、BG-19 `kb run` 前移）**均已真机验证**；`tools/hang_check.sh`（BG-32 长时挂机一键检测）已入库（PR #21 squash `79d5f13`）。
+- **最大缺口（下一步就是这个）**：上游 OAS 的插拔点还没接 —— `vendor/` 下**没有** `android_impl.py`，`screenshot_methods['android']` / `click_methods['android']` **未注册**（对应 §六 待办「阶段 2 第 9 项」）。也就是说「壳 + 通道 + 采集 + 点击」全通，但**还不会自动打本**。
+- 全量待办看 `docs/BACKLOG.md`（main 基线实查：`[x]` 13 项 / `[ ]` 14 项）。**调度位换人先读 `docs/handoff/20261115-1158-main-ai.md`**（主 AI 交接包，七要素 + 会话名册 + 排除记录 + 待办优先级）。
+- 一条必须先知道的结论：**后台进程会被系统的 cached-app freezer 冻住**（阶段 0 实测冻了 36 秒）；Realme/ColorOS 的 Hans freezer **连 FGS 也不豁免**。对策见 §十一 与 ADR-0001（PARTIAL 语义锁 + 心跳/调度前移 daemon）。
+- 想先跑一遍现状验证：`pm install -r -t dist/oas-android-debug.apk` → `am start -n org.onmyoji.oas.android/.MainActivity --ei poc_display 1` → 80 秒后看 `display_poc.txt`，应仍是 **7/7**。
 
 ---
 
@@ -396,13 +393,14 @@ app 只保留 UI + 前台服务 + socket 客户端。
 ## 十二、接力点（写手交棒用）
 > 制度见 `docs/WORKFLOW.md §1`：**一个写手位，可以换人，不可并行**。换棒时本节整节替换，不追加历史；**详细内容写在交接包里**（`docs/handoff/`）。
 
-- **分支**：`main`，head = `9969156`（PR #18 已合并），工作区干净
-- **主 AI 交接包**：`docs/handoff/20261115-0150-main-ai.md`（调度位换人时先读这个；写手棒交接包是另一份）
-- **换棒判据**：上下文接近压缩阈值即换棒（256K × 0.7 ≈ 179K 词元，或消息数到 20 条触发总结）
-- **当前交接包**：`docs/handoff/20261115-0130-bg22-setSurface.md`（BG-22 七要素，面向写手 A4 续棒）
-- **写手位交接**：A（`519dbd40…`，97% 定格）→ A2（`8833100c-271d-4988-b752-ebce0f2321ca`，BG-19，定格）→ A3（`ca2b0219-0992-4e48-996d-dc9fcf071460`，BG-23，定格）→ A4（`3464a2d7-9d14-4b05-9ee2-35dcd7f6e265`，BG-21 pilot 已交回 `efc0588`）→ **本棒仍由 A4 续棒做 BG-22，不新建 A5**（依据：A4 仅 4 条消息、无输出截断记录；`WORKFLOW §1` 只禁并行、不要求每棒换人）
-- **本棒任务（BG-22）**：主屏熄屏时对虚拟屏 `setSurface(null)`，**默认关**（ship dark，仅显式 extra 生效）；一次装机两组熄屏实验（feature off 跑 65s = BG-21 新口径复现组；feature on 跑 65s = BG-22 效果组），两组都采 `kb run` 报告、`suspend_stats` 前后值、`dumpsys power | grep mHoldingDisplaySuspendBlocker`、`frames` 是否停增
-- **本轮决策（用户，2026-11-15）**：① **BG-21 官方口径先不改、不关闭**，先用预实验复现验证新口径（真熄屏 65s → `n/4=4/4` 且 C 段 `maxGap ≤1500ms`），拿到第二组数据再定案；② **BG-22 采纳 `setSurface(null)`**（默认关，用户已知情「虚拟屏停渲」的代价）；③ 会话**不追分组**，靠 `OAS-<角色><序号> <任务>` 标题前缀识别（BG-25）；④ 文档收口与交接包**外包给子会话**，主 AI 只做决策/验收/合并
+- **分支**：`main`，head = `79d5f13`（PR #21 已 squash 合并 = BG-32 `tools/hang_check.sh` 入库），与 `origin/main` 同一 sha
+- **在飞分支**：`docs/e1-handoff-role`（`886c8a6` 流程条文 + 本交接包提交），待推送 + 开 PR + 门禁绿后合并
+- **主 AI 交接包（当前）**：`docs/handoff/20261115-1158-main-ai.md`（**调度位换人先读这个**；本棒主 AI 已压缩 3 次）
+- **写手棒交接包（上一份，已归档）**：`docs/handoff/archive/20261115-0130-bg22-setSurface.md`（BG-22，A4 续棒用；BG-22 已结案、不进 main）
+- **换棒判据**：上下文接近压缩阈值即换棒（256K × 0.7 ≈ 179K 词元，或消息数到 20 条触发总结）；已触发过一次压缩也换
+- **写手位交接**：A（`519dbd40…`）→ A2（`8833100c-271d-4988-b752-ebce0f2321ca`）→ A3（`ca2b0219-…`，BG-23）→ A4（`3464a2d7-9d14-4b05-9ee2-35dcd7f6e265`，BG-21/BG-22，已退休不复用）→ **A5（`ca2b0219-0992-4e48-996d-dc9fcf071460`）为当前唯一代码位**
+- **本棒任务**：BG-32 工具已入库（PR #21 squash `79d5f13`）；下一步 P0 = 用户配合做**含游戏 + 虚拟屏的真机长跑**，验 `tools/hang_check.sh` 的 **PASS 路径**（至今只跑过阴性对照与半阳性）
+- **本轮决策（用户，2026-11-15）**：① **交接包固定由 `OAS-E1 交接包`（`acbf5597-741f-4a08-b437-9c6b7950f184`）撰写**，主 AI 只验收 + 在本节留指针（`WORKFLOW §1` 已改，commit `886c8a6`）；② BG-32 走「分支 + PR + 门禁绿」入库（PR #21），不直推 main；③ 会话**不追分组**，靠 `OAS-<角色><序号> <任务>` 标题前缀识别（BG-25）；④ 文档收口与交接包**外包给子会话**，主 AI 只做决策/验收/合并
 - **已知坑**：
   - 心跳每行格式固定 `{"ts":ms,"displayId":id,"frames":n,"pid":p}`（`Heartbeat.java`），别自创字段
   - `displayId=-1` 时 `frames` 恒为 -1，不能用来判「画面在动」；要判渲染必须在真实虚拟屏 displayId 上跑
@@ -413,6 +411,9 @@ app 只保留 UI + 前台服务 + socket 客户端。
   - 从 proot 连不上抽象 socket（`/proc/net/unix` Permission denied、`ConnectionRefused`）
   - 【新】**`super_admin:shell` 默认 cwd 是已被删除的目录** → 任何 `app_process`（含 `kb run`）**必须先 `cd /data/local/tmp`**，否则 JVM 启动期 SIGSEGV（`System_specialProperties ← __strncat_chk`，`getcwd()` 返回 NULL）；`env -i` 不能绕过，只会变成「rc=0 但完全空跑」
   - 【新】`dumpsys power` 里的 `displayId:N` **跟着当前前台画面走**（游戏 `:19`、Operit `:0`），脚本里禁止写死 19
+  - 【新】`main` 是受保护分支：直推被 `protected branch hook declined` + `Required status check "static-gate" is expected` 拒 → 一律 分支 + PR + 门禁绿后 squash
+  - 【新】proot(`terminal`) 的 `ps` 是 Ubuntu procps，**不支持 `-o PID,ARGS`**（报 `unknown user-defined format specifier "PID"`）→ 设备进程查询一律走 `super_admin:shell`（toybox）
+  - 【新】`git commit -F -` 配 heredoc 在 `terminal` 里会被吞字符 → 提交一律用多个 `-m`；判定 push 是否真上去用 `git ls-remote --heads origin`，**不信 push 回执正文**
 
 ## 十三、许可
 
