@@ -25,6 +25,7 @@
 - daemon 环境判据不用 cmdline 子串（`su -c` 起 shell 时会合法带包名，会误杀生产路径），改读父进程 cgroup
 - BG-21 改为**预实验（pilot）→ 正式测**两段式：先验证「能不能观测到整机 suspend」，再谈 60s 心跳是否停跳
 - `docs/WORKFLOW.md §1` 记录已知限制：**会话分组无法由 AI 设定**，直改 Room 库会被 App 运行时写回（杀进程无效），故用 `OAS-` 标题前缀识别接力会话
+- docs: 交接包目录只保留最新一份，`docs/handoff/archive/` 已清空（旧包不再归档，历史见 `git log`）；`CHANGELOG.md` 维护权归属「文档 C」
 
 ### Fixed
 - `--wait` 由固定 sleep 改为轮询 `kb status`；段窗口用前一个心跳 `ts` 衔接，段首空洞不再被低估

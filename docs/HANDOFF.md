@@ -383,7 +383,7 @@ app 只保留 UI + 前台服务 + socket 客户端。
 - 会话分工与 chat_id：
   - A 写手（唯一代码位）`519dbd40-9e9a-480e-939e-248a88fa46fc`
   - B 诊断（只读）`b53d34d9-cb1e-4f60-8516-9e51aef35f77`
-  - C 文档 `3bf3c365-dc5b-49a8-84be-dbd1c278198e`
+  - C 文档 `5ca72fd5-8c2c-429a-9774-90e2946fc6ed`（原写 `3bf3c365…`，2026-11-15 实查该 id 不存在，已更正）
   - D 调研 `e29b2b98-efe0-4c9b-97ee-5d78f9282368`
 - **事实修正（重要）**：`HANDOFF 11.5` 里「daemon 约 60s 后消失」是误判。实测 pid 990 **持续存活 ≈71 分钟**，`oom_score_adj=-1000`、cgroup `freezer:/`、PPid=1，`server.log` 仅 `READY`。
   真正导致 A 路线没数字的是：app 侧心跳线程被 socket 调用拖死 + 报告只在最后写一次（所以磁盘上一片空白）。
@@ -394,9 +394,9 @@ app 只保留 UI + 前台服务 + socket 客户端。
 > 制度见 `docs/WORKFLOW.md §1`：**一个写手位，可以换人，不可并行**。换棒时本节整节替换，不追加历史；**详细内容写在交接包里**（`docs/handoff/`）。
 
 - **分支**：`main`，head = **以 `git rev-parse --short main` 现查为准**（不要引用本文里的 sha，会自指过期；本行写入时点 = `41de9b6`）：PR #21 = BG-32 工具入库、PR #22 = 交接包 E 制度 + 首份主 AI 交接包、PR #23 = 交接包随合并自纠
-- **在飞分支**：无（工作区干净，`app/build` 已清、体积 165M，`dist/` 两个 APK 均在）
+- **在飞分支**：无未合并工作（工作区干净，`app/build` 已清、体积 165M，`dist/` 两个 APK 均 48891504 B）。**但陈旧分支仍在**：远端 5 个已并入的 head（`docs/e1-handoff-role`、`docs/e1-handoff-sync`、`docs/handoff-no-shas`、`feat/bg32-hang-tool`、`feat/bg22-setSurface`）+ 本地 7 个非 main 分支（同上 5 个 + `backup/bg22-docs` 越位产物备份 + `feat/bg32-hang-check`），**清理待用户授权**——内容均已随 PR #21–#24 进 main，按血统看不算 merged 是 squash 合并所致
 - **主 AI 交接包（当前）**：`docs/handoff/20261115-1158-main-ai.md`（**调度位换人先读这个**；本棒主 AI 已压缩 3 次）
-- **写手棒交接包（上一份，已归档）**：`docs/handoff/archive/20261115-0130-bg22-setSurface.md`（BG-22，A4 续棒用；BG-22 已结案、不进 main）
+- **旧交接包**：按用户 2026-11-15 决定「只留最新一份」，`docs/handoff/archive/` 已清空（历史见 `git log -- docs/handoff/`）；BG-22 结案记录以 `docs/BACKLOG.md` 状态行为准
 - **换棒判据**：上下文接近压缩阈值即换棒（256K × 0.7 ≈ 179K 词元，或消息数到 20 条触发总结）；已触发过一次压缩也换
 - **写手位交接**：A（`519dbd40…`）→ A2（`8833100c-271d-4988-b752-ebce0f2321ca`）→ A3（`ca2b0219-…`，BG-23）→ A4（`3464a2d7-9d14-4b05-9ee2-35dcd7f6e265`，BG-21/BG-22，已退休不复用）→ **A5（`ca2b0219-0992-4e48-996d-dc9fcf071460`）为当前唯一代码位**
 - **本棒任务**：BG-32 工具已入库（PR #21 squash `79d5f13`）；下一步 P0 = 用户配合做**含游戏 + 虚拟屏的真机长跑**，验 `tools/hang_check.sh` 的 **PASS 路径**（至今只跑过阴性对照与半阳性）

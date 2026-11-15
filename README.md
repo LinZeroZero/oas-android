@@ -11,6 +11,7 @@
 - 下一步：**P1 前台服务 + WakeLock**（解决 app 进程被 cached-app freezer 冻结），然后 Python 3.13 / `CvBridge` / `android_impl.py` 插拔点
 
 > 📌 **接手开发请先看 [docs/HANDOFF.md](docs/HANDOFF.md)**（当前状态 + 待办清单 + 冷启动步骤 + 已踩过的坑）。
+> 📁 交接包只留最新一份（`docs/handoff/`），旧包不归档、不堆积，历史见 `git log -- docs/handoff/`
 > 阶段 1 虚拟屏的设计、socket 协议、7 项实测数据、参考实现对照见 **[docs/BACKGROUND.md](docs/BACKGROUND.md)**。
 > 阶段 0 的历史踩坑记录见 [docs/PORTING.md](docs/PORTING.md)（历史档案，其中 `wm size` 相关结论已废弃）。
 > 第三方代码许可（scrcpy / OAS / 仅借鉴的 AGPL 项目）见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

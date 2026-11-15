@@ -4,18 +4,20 @@
 
 ## 文件命名
 
-`YYYYMMDD-HHMM-<BACKLOG 号>-<slug>.md`，例如 `20261115-0110-bg21-c-phase.md`。只保留当前这一棒；被接替的旧包移到 `docs/handoff/archive/`（不删，留着复盘）。
+`YYYYMMDD-HHMM-<BACKLOG 号>-<slug>.md`，例如 `20261115-1158-main-ai.md`。只保留当前这一棒；被接替的旧包**直接删除**（git 历史即复盘），不再设 `archive/` 目录。
 
 **两类交接包，别混：**
 
 | 类型 | 文件名 | 谁读 | 例子 |
 |---|---|---|---|
-| 写手棒交接包 | `YYYYMMDD-HHMM-<BG号>-<slug>.md` | 接棒的写手会话 | `archive/20261115-0130-bg22-setSurface.md`（已归档示例） |
+| 写手棒交接包 | `YYYYMMDD-HHMM-<BG号>-<slug>.md` | 接棒的写手会话 | （当前无在档写手棒交接包；主 AI 棒示例见下行） |
 | 主 AI 交接包 | `YYYYMMDD-HHMM-main-ai.md` | 接任的调度会话（上下文压缩/换人时） | `20261115-1158-main-ai.md`（**当前**） |
 
 主 AI 交接包多写三块：会话名册（chat_id 实查）、排除记录全文、待办优先级；**不要把 PAT 等密钥写进去**（仓库是 public）。
 
 两类都由 **交接包 E**（`OAS-E1 交接包`）撰写，**主 AI 只验收**（判据见 `docs/WORKFLOW.md §1`）并在 `docs/HANDOFF.md §十二` 留指针；E 不碰 `HANDOFF.md`、`WORKFLOW.md`、代码与设备，也不自行 `git add/commit`。
+
+> 2026-11-15 用户决定：**交接包只留最新一份**，被接替的旧包直接删除，`archive/` 目录已取消（历史见 `git log -- docs/handoff/`）。
 
 ## 七要素模板
 
