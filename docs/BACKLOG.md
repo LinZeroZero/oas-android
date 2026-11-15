@@ -29,6 +29,11 @@
   - 现象：`System_specialProperties → __strncat_chk` 空指针崩，`getcwd()` 返回 NULL；所有 `app_process` 调用必先 `cd /data/local/tmp`
   - `env -i` 不能绕过，反而变成 rc=0 全空跑（更难查）
   - 关闭依据：`docs/HANDOFF.md §十二 已知坑` 已入册 + 交接包 §4 复述（`docs/evidence/20261115-0057-BG-21-pilot.md §0` 为原始发现）
+- [x] **BG-27 阴阳师 `.tag0 → .Client` 自行跳 Activity，丢 `launchDisplayId` 落回主屏**
+  - 现象：`am start --display N -n <pkg>/.tag0` 返回成功，但游戏内部再跳 `.Client`，新 Activity 不带 `launchDisplayId` → 落回主屏，虚拟屏只剩黑
+  - 绕过（已实测）：先 `am force-stop`，再直启 `.Client`；证据 `docs/evidence/20261115-1230-BG-22-vdisplay-game-frames.md`
+  - 状态 `[x]`（有绕过方案），但**依赖包内 Activity 名**：游戏版本升级若改名，需重新确认 `.Client` 是否仍存在
+  - 归属：B（诊断）/ A4（验证）
 
 ## 三、设备侧隐患（P2）
 
@@ -100,7 +105,9 @@
   - 验证法：`input keyevent 26` 后连查 `dumpsys power | grep -E 'mWakefulness=|displayId:19'` 与 `cat /sys/power/wake_lock`（与 BG-21 一起做，省一次熄屏）
   - **本轮决策（用户，2026-11-15）**：先不改代码，先做基线实测（见 BG-21 预实验），拿到「有屏锁时 60s 的心跳 / 挂起计数」原始数据再决定是否采纳 `setSurface(null)`
   - 归属：B（定责已交付）→ 主 AI（决策）/ A（改代码，若采纳 setSurface 方案）
+  - 状态（2026-11-15 实机）：`frames` 探针早已存在、无需新代码；`detach/attach` 已在**亮屏**下验证真停渲/真恢复（`docs/evidence/20261115-1230-BG-22-vdisplay-game-frames.md`）；**熄屏触发链路未验**（`ACTION_SCREEN_OFF` → detach 代码在但没跑过）
   - **2026-11-15 决策（用户）**：**采纳** `setSurface(null)`（主屏熄屏时对虚拟屏停渲），**默认关**；此前「暂不采纳／先不改代码」的表态作废；归属：写手 A4（续棒）
+  - 4-eyes 评审（P0 无阻塞，5×P1 + 3×P2）见 BG-28。
 - [x] **BG-23 `--socket` 参数是假参数**（`openServer(String path)` 无视入参，恒 bind `ABSTRACT_NAME`）
   - 后果：① 换个 socket 名起第二实例必报 `Address already in use`；② `sFileSocket` 恒 false，`chmod666` 与文件 socket 分支是死代码
   - 归属：A3（写手位第 3 棒）；验收：`--socket x.a --cmd ping` 与 `--socket x.b --cmd ping` 可并存；不传时行为与现在一致
@@ -113,3 +120,14 @@
   - 已试过并失败：设备无 `sqlite3`；proot python3 + sqlite 3.45.1 直改 `chats."group"`（先 `chmod 666` 三件套）→ 当场 `integrity_check=ok`、汇总正确，但 App 运行时把内存旧行整行写回，杀进程重启仍回退（`None 1 / OAS安卓端适配 9 / 子任务 3`）
   - 现状处置（用户决策 2026-11-15）：**不追分组**，靠 `OAS-<角色><序号> <任务>` 标题前缀识别接力会话；需归组时由用户手动移动
   - 归属：工具侧限制（非本项目代码问题）；若 Operit 后续提供设置分组的 API，再回来关掉这条
+- [ ] **BG-28 BG-22 合 main 前置：4-eyes 评审遗留（P0 无阻塞，5×P1 + 3×P2）**
+  - P1 `poc/displayserver/src/org/onmyoji/oas/server/DisplayEngine.java:162/178` — detach/attach 在引擎级 `synchronized(this)` 内做 binder 调用，同一把锁被 `grab`(:284，含整帧写盘) 与心跳 `framesOf`(:145) 共用 → 心跳可能迟到，被 BG-19 误判「冻住」；修法：binder 调用移出全局锁，或改 entry 级锁
+  - P1 `DisplayEngine.java:198` — `onFrame` 无锁，与 `grab`/`detach` 并发读写 `entry.latest` / `hasFrame` / `frames`（均非 volatile）→ 可见性与撕裂；修法：这些字段改 `volatile`，或统一走锁
+  - P1 `app/src/main/java/org/onmyoji/oas/android/service/KeepAliveService.kt:131-133` + `:160` — 二次 `onStartCommand` 不带 extra 时不会注销已注册的 receiver → 「默认关」只在冷启动成立；修法：每次 `onStartCommand` 先 `unregister`，再按 extra 决定是否注册
+  - P1 `KeepAliveService.kt:196-209` — 先 `list` 再取「第一块」屏 → 多屏时会 detach/attach 错 id；修法：按 name 匹配，或校验只有一块屏才动手
+  - P1 `DisplayEngine.java:158-159` — 注释断言 detach 能解除 `mHoldingDisplaySuspendBlocker` / `SCREEN_BRIGHT`，而 evidence 明列该项未验 → 推断写成结论；修法：注释降级为「假设，待验」
+  - P2 `docs/evidence/20261115-1230-BG-22-vdisplay-game-frames.md:41` — 「跳转 Intent 未带 launchDisplayId」是推断（未抓 intent）；改为标注「推断」
+  - P2 `KeepAliveService.kt:180` — `registerReceiver` 未带 `RECEIVER_NOT_EXPORTED`（系统广播可豁免，但吃 lint）
+  - P2 `DisplayEngine.java:150` — detach 重复调用仍回 true，日志误导；建议已摘除时回 false
+  - 归属：写手 A4（合 main 前统一返工）；验收：8 条逐条落地 + `tools/gate.sh --static` 仍 PASS + 亮屏 detach/attach 复测不回归
+> 追加背景：本轮不改这些代码 —— BG-22 去留取决于熄屏实验（未做），现在改会让 evidence 与 commit 不再一一对应；故一律作为**合 main 前置**。

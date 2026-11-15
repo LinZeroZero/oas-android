@@ -396,13 +396,15 @@ app 只保留 UI + 前台服务 + socket 客户端。
 ## 十二、接力点（写手交棒用）
 > 制度见 `docs/WORKFLOW.md §1`：**一个写手位，可以换人，不可并行**。换棒时本节整节替换，不追加历史；**详细内容写在交接包里**（`docs/handoff/`）。
 
-- **分支**：`main`，head = `9969156`（PR #18 已合并），工作区干净
+- **分支**：`feat/bg22-setSurface`，head = `99022ea`（**未合 main**；已提交 `cb1faea` KeepAliveService 门控、`99022ea` evidence + `docs/research`）
 - **主 AI 交接包**：`docs/handoff/20261115-0150-main-ai.md`（调度位换人时先读这个；写手棒交接包是另一份）
 - **换棒判据**：上下文接近压缩阈值即换棒（256K × 0.7 ≈ 179K 词元，或消息数到 20 条触发总结）
 - **当前交接包**：`docs/handoff/20261115-0130-bg22-setSurface.md`（BG-22 七要素，面向写手 A4 续棒）
 - **写手位交接**：A（`519dbd40…`，97% 定格）→ A2（`8833100c-271d-4988-b752-ebce0f2321ca`，BG-19，定格）→ A3（`ca2b0219-0992-4e48-996d-dc9fcf071460`，BG-23，定格）→ A4（`3464a2d7-9d14-4b05-9ee2-35dcd7f6e265`，BG-21 pilot 已交回 `efc0588`）→ **本棒仍由 A4 续棒做 BG-22，不新建 A5**（依据：A4 仅 4 条消息、无输出截断记录；`WORKFLOW §1` 只禁并行、不要求每棒换人）
 - **本棒任务（BG-22）**：主屏熄屏时对虚拟屏 `setSurface(null)`，**默认关**（ship dark，仅显式 extra 生效）；一次装机两组熄屏实验（feature off 跑 65s = BG-21 新口径复现组；feature on 跑 65s = BG-22 效果组），两组都采 `kb run` 报告、`suspend_stats` 前后值、`dumpsys power | grep mHoldingDisplaySuspendBlocker`、`frames` 是否停增
 - **本轮决策（用户，2026-11-15）**：① **BG-21 官方口径先不改、不关闭**，先用预实验复现验证新口径（真熄屏 65s → `n/4=4/4` 且 C 段 `maxGap ≤1500ms`），拿到第二组数据再定案；② **BG-22 采纳 `setSurface(null)`**（默认关，用户已知情「虚拟屏停渲」的代价）；③ 会话**不追分组**，靠 `OAS-<角色><序号> <任务>` 标题前缀识别（BG-25）；④ 文档收口与交接包**外包给子会话**，主 AI 只做决策/验收/合并
+- **已验（2026-11-15）**：虚拟屏上跑通阴阳师（必须 `am force-stop` 后直启 `.Client`，见已知坑 1）；BG-22 的 `surface detach/attach` 在**亮屏**下是真停渲 / 真恢复 → 证据 `docs/evidence/20261115-1230-BG-22-vdisplay-game-frames.md`
+- **未验**：① 熄屏广播触发链路（`ACTION_SCREEN_OFF` → detach 那一行**代码在但没跑过**）；② 熄屏时虚拟屏是否仍在合成；③ OAS 脚本本体 65s 全流程
 - **已知坑**：
   - 心跳每行格式固定 `{"ts":ms,"displayId":id,"frames":n,"pid":p}`（`Heartbeat.java`），别自创字段
   - `displayId=-1` 时 `frames` 恒为 -1，不能用来判「画面在动」；要判渲染必须在真实虚拟屏 displayId 上跑
@@ -413,6 +415,10 @@ app 只保留 UI + 前台服务 + socket 客户端。
   - 从 proot 连不上抽象 socket（`/proc/net/unix` Permission denied、`ConnectionRefused`）
   - 【新】**`super_admin:shell` 默认 cwd 是已被删除的目录** → 任何 `app_process`（含 `kb run`）**必须先 `cd /data/local/tmp`**，否则 JVM 启动期 SIGSEGV（`System_specialProperties ← __strncat_chk`，`getcwd()` 返回 NULL）；`env -i` 不能绕过，只会变成「rc=0 但完全空跑」
   - 【新】`dumpsys power` 里的 `displayId:N` **跟着当前前台画面走**（游戏 `:19`、Operit `:0`），脚本里禁止写死 19
+  - 【新】`am start --display N -n <pkg>/.tag0` **看似成功但没用**：游戏内部再跳 `.Client`，新 Activity 不带 `launchDisplayId` → 落回主屏（虚拟屏只剩黑）；必须先 `am force-stop` 再直启 `.Client`（BG-27）
+  - 【新】`nc -U @name` **不支持抽象命名空间**（直接 ENOENT），连 daemon 的抽象 socket 只能用 `KbClient`
+  - 【新】proot 里**写不了 `dist/`**（`Permission denied`），要落盘到那个目录得走 root shell 拷
+  - BG-22 已过 4-eyes 评审：P0 无阻塞；5×P1 + 3×P2 全部记入 BACKLOG BG-28（合 main 前置，本轮不改代码）。
 
 ## 十三、许可
 

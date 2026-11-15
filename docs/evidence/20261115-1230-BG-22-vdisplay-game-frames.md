@@ -38,7 +38,7 @@ dumpsys activity: Display #0 → Task{f1a8746 #880 …com.netease.onmyoji}
 dumpsys window:  Window{661e7d8 …/.Client} mDisplayId=0
 ```
 
-结论：`.tag0` 起来后自己跳 `.Client`，**跳转 Intent 未带 launchDisplayId**，窗口跑回主屏；虚拟屏只留下首帧白屏。
+结论：`.tag0` 起来后自己跳 `.Client`，**跳转 Intent 未带 launchDisplayId（推断，未抓 intent 实证）**，窗口跑回主屏；虚拟屏只留下首帧白屏。
 无 `Launch on display check: denied`、无 `not-embedded activity`、非 FLAG_SECURE（黑比例 0）。
 `flags=9` → 补到 `16457`（+SUPPORTS_TOUCH +OWN_FOCUS）后 `touch` 才从 NONE 变 VIRTUAL，但**这并未修复跳屏**，跳屏是应用侧行为。
 
