@@ -397,7 +397,7 @@ app 只保留 UI + 前台服务 + socket 客户端。
 ## 十二、接力点（写手交棒用）
 > 制度见 `docs/WORKFLOW.md §1`：**一个写手位，可以换人，不可并行**。换棒时本节整节替换，不追加历史；**详细内容写在交接包里**（`docs/handoff/`）。
 
-- **分支**：`feat/bg22-setSurface`，head = `8948ee0`（**未合 main**，`main` = `f06411e`）；代码改动止于 `656ec1a`，其后的 7 个提交（`8c13c74`…`8948ee0`）**全为 doc-only**
+- **分支**：`feat/bg22-setSurface`（**未合 main**，`main` = `f06411e`）；head 以 `git log -1` 现查为准；代码改动止于 `656ec1a`，其后的提交（自 `8c13c74` 起）**全为 doc-only**
 - **PR #20**：draft / open / base=main / 未合并 → https://github.com/LinZeroZero/oas-android/pull/20
 - **主 AI 交接包（当前唯一一份）**：`docs/HANDOFF-20261116.md`（七要素 + 会话名册 + 待办优先级 + 设备真值，2026-11-15 16:05 版）—— **调度位换人先读这份**
 - **写手棒交接包**：`docs/handoff/20261115-0130-bg22-setSurface.md`；模板与命名规则见 `docs/handoff/README.md`
