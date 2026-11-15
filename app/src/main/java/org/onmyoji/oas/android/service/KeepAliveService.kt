@@ -5,8 +5,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -15,6 +17,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import org.onmyoji.oas.android.MainActivity
 import org.onmyoji.oas.android.R
+import org.onmyoji.oas.android.root.DisplayServer
 
 /**
  * 最小「保活」前台服务（阶段 2 / P1-1）。
@@ -35,6 +38,12 @@ class KeepAliveService : Service() {
     companion object {
         const val ACTION_START = "org.onmyoji.oas.android.action.KEEPALIVE_START"
         const val ACTION_STOP = "org.onmyoji.oas.android.action.KEEPALIVE_STOP"
+
+        /**
+         * BG-22 可选能力开关（**默认关**）：只有 `--ei vdisplay_detach 1` 才注册屏状态广播。
+         * 不传 / 传 0 = 与之前完全一致：不注册 receiver、不发任何 socket 命令。
+         */
+        const val EXTRA_VDISPLAY_DETACH = "vdisplay_detach"
 
         private const val CHANNEL_ID = "oas_keepalive"
         private const val NOTIF_ID = 1001
@@ -98,6 +107,9 @@ class KeepAliveService : Service() {
     private val handler by lazy { Handler(Looper.getMainLooper()) }
     private var ticker: Runnable? = null
 
+    /** BG-22：屏状态广播接收器（默认 null = 未注册；只有 EXTRA_VDISPLAY_DETACH=1 才注册）。 */
+    private var surfaceReceiver: BroadcastReceiver? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -115,6 +127,10 @@ class KeepAliveService : Service() {
         acquireWakeLock()
         running = true
         if (startedAtElapsed == 0L) startedAtElapsed = SystemClock.elapsedRealtime()
+        // BG-22：只有显式 --ei vdisplay_detach 1 才挂屏状态广播；不传 = 行为与之前完全一致
+        if (intent?.getIntExtra(EXTRA_VDISPLAY_DETACH, 0) == 1) {
+            registerSurfaceReceiver()
+        }
         startTicker()
         return START_NOT_STICKY
     }
@@ -124,6 +140,7 @@ class KeepAliveService : Service() {
         startedAtElapsed = 0L
         ticker?.let { handler.removeCallbacks(it) }
         ticker = null
+        unregisterSurfaceReceiver()
         releaseWakeLock()
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -137,6 +154,59 @@ class KeepAliveService : Service() {
     }
 
     // ------------------------------------------------------------------ //
+
+    // ---- BG-22：主屏熄屏时摘虚拟屏输出端（**默认关**，只有显式 extra 才启用）----
+
+    private fun registerSurfaceReceiver() {
+        if (surfaceReceiver != null) return
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val sub = when (intent?.action) {
+                    Intent.ACTION_SCREEN_OFF -> "detach"
+                    Intent.ACTION_SCREEN_ON -> "attach"
+                    else -> return
+                }
+                // 广播回调在主线程：socket 调用最长 2s，挪到独立线程，绝不阻塞主线程、不抛
+                val t = Thread { sendSurfaceCommand(sub) }
+                t.name = "oas-surface-$sub"
+                t.isDaemon = true
+                t.start()
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+        }
+        runCatching { registerReceiver(receiver, filter) }
+            .onSuccess { surfaceReceiver = receiver }
+            .onFailure { note = "屏状态广播注册失败: ${it.message}" }
+    }
+
+    private fun unregisterSurfaceReceiver() {
+        val receiver = surfaceReceiver ?: return
+        surfaceReceiver = null
+        runCatching { unregisterReceiver(receiver) }
+    }
+
+    /**
+     * 发 `surface detach|attach <id>`。displayId 从 daemon `list` 现取，取不到就跳过本次；
+     * socket 失败（rawCommand 返空串）只记 log：不重试、不抛，超时沿用 DisplayServer 的 2s。
+     */
+    private fun sendSurfaceCommand(sub: String) {
+        val id = firstDisplayId(DisplayServer.list()) ?: return
+        val resp = DisplayServer.rawCommand("surface $sub $id", 2_000)
+        note = if (resp.contains("\"ok\":true")) {
+            "surface $sub $id 已生效"
+        } else {
+            "surface $sub $id 未生效: ${resp.ifBlank { "socket 无响应" }}"
+        }
+    }
+
+    /** 从 `list` 的 JSON 里取第一块虚拟屏的 displayId；解析不出就 null（调用方跳过本次）。 */
+    private fun firstDisplayId(listJson: String): Int? =
+        Regex("\"displayId\"\\s*:\\s*(-?\\d+)").find(listJson)
+            ?.groupValues?.get(1)?.toIntOrNull()
+            ?.takeIf { it >= 0 }
 
     private fun startForegroundSafely() {
         val notification = buildNotification()
