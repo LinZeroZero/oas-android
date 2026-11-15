@@ -166,7 +166,12 @@
    - 修法：主判据改「`0::` 行必须是 `/`」，`memory:` 行降为附带日志；顺带补 `setsid` + `--nice-name`（可识别进程名，便于 `ps` 自检）
    - 验收：单测/脚本断言三种 cgroup 文本（全 `/` / `/apps/uid_x` / `/uid_x/pid_y`）判定正确；`tools/gate.sh --static` PASS
    - 归属：A4（写手）；前置：无（不依赖熄屏实验），但**本轮不动代码**
-- [ ] **BG-31 主屏「自动旋转」在实验收尾时自行打开 —— 来源未定责（现场监视已部署）**
+- [ ] **BG-31 主屏「自动旋转」在实验收尾时自行打开 —— 主因已定责（`monkey`），次因待查**
+  - **结论（2026-11-15，两次独立复现，`docs/evidence/20261115-1555-BG-31-rotation-culprit.md`）**：清理命令 `monkey -p <pkg> -c android.intent.category.LAUNCHER 1` 会把 `accelerometer_rotation` **写成 1**；同一次 A/B 里 `am force-stop` 与 `am start` 都不引起变化。历史 E1/E2/BG-22 收尾都用了这句 → 12:52 与 15:15 两簇旋转很可能都是它留下的 `A=1`
+  - **方法论教训**：我曾以「monkey 帮助里没有 `--pct-rotation`」判定「生成不出旋转事件」——查错了层次；帮助文本没列的选项 ≠ 行为不存在
+  - **处置（纪律）**：本项目**禁用 `monkey` 拉起前台**，一律改 `am start -n <pkg>/<activity>`
+  - **次因（现象①，未定责）**：`mUserRotationMode` 变 `USER_ROTATION_FREE` **不需要** `A=1`（`15:42:45`、`15:54:46` 两次实测 `A=0` 仍 FREE）→ 「开关关着也会转」由此解释；触发组件待查（建屏/横屏 Activity 上屏时的方向请求 or ColorOS 显示策略）
+  - 归属：B（只读复核）/ 主 AI（纪律落文档）
   - 现象：`RotationHistory` 两簇旋转（`12:52:13~12:52:21` 六条；`15:15:32.528` 与 `15:15:35.581` 两条），责任源全为 `com.ai.assistance.operit/.ui.main.MainActivity`、`SCREEN_ORIENTATION_UNSPECIFIED`、`mode=USER_ROTATION_FREE`；用户当时看到「自动旋转」被点亮后手动关闭
   - 已排他：① 仓库 2706 文件 **0 处**写旋转（`accelerometer_rotation\|setRequestedOrientation\|screenOrientation\|user_rotation\|SCREEN_ORIENTATION` 仅命中 `docs/HANDOFF.md` 文档）；② 本机 `monkey` **无 `--pct-rotation`** 事件源，生成不出旋转事件；③ `setUserRotation(FREE)` 不持久化，而两次提交都是 FREE ⇒ 更像「确有进程写过开关」
   - 复现对照（两次均**阴性**）：亮屏态、锁屏态各用同一 `SET_TIMER` intent 跑一次（锁屏态确实拉起了 `TimerAlertFullScreen` + `keyguardGoingAway`），`accelerometer_rotation` / `user_rotation` / `mUserRotationMode` 全程未变；差异点在于那两次手机是横握（`sensor=ROTATION_90`）才会真提交旋转
