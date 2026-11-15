@@ -1,0 +1,263 @@
+--- a/vendor/oas/module/device/method/android_impl.py
++++ b/vendor/oas/module/device/method/android_impl.py
+@@ -0,0 +1,208 @@
++"""Android 本机通道（P0-B 最小闭环）：虚拟屏截图 + 定向点击。
++
++链路（都是仓库里已有的设施，这里只做接线，不另起一套 subprocess su）：
++
++    screenshot_android：
++        daemon `grab <did> <raw>`（Kotlin DisplayServer.grabRaw，写 screencap 兼容 raw）
++        → 读文件 → oas_device.decode_raw（16 字节头 / fmt=1=RGBA_8888）
++        → 必要时按 oas_device 的裁切 / letterbox 口径适配成 1280x720
++        → 转成 BGR（OAS 的模板与 cv2 口径都是 BGR，不能直接返回 RGB）
++
++    click_android：
++        1280x720 画布坐标 → oas_device.canvas_to_device → Device.tapOnDisplay
++        （内部就是常驻 su shell 执行 `input -d <displayId> tap <x> <y>`，主屏不受影响）
++
++为什么不用 screencap -d：本机 `screencap -d <id>` 抓不到虚拟屏（见交接包排除记录第 7 条），
++取帧唯一可靠通道是 daemon 的 grab。所以这里**不调用** oas_device.capture_raw。
++
++⚠ 两个已知边界（本 PR 不解决，已写进 PR 描述）：
++  1) 打包接线未做：`vendor/` 是 gitignore 的上游副本，chaquopy 也没有配 srcDirs，
++     本文件暂时不会进 APK；真进了 APK 时 `import oas_device` 也可能 ImportError
++     （oas_device.py 在 app/src/main/python，和 vendor 不在同一个 python 源集合）。
++  2) TODO：swipe_android / long_click_android 未实现。control.py 的 click_methods 只注册了
++     'android' 点击、long_click_methods 没注册，swipe 的 if/elif 也没动，
++     所以「滑动 / 长按」仍会降级到 swipe_adb / long_click_adb。
++"""
++
++import json
++import os
++import tempfile
++
++import numpy as np
++
++from module.logger import logger
++
++CANVAS_W = 1280
++CANVAS_H = 720
++
++# 虚拟屏 id 覆盖开关（不新增 config 项：屏 id 每次建屏都会变，写进 config 必错）
++ENV_DISPLAY_ID = 'OAS_ANDROID_DISPLAY_ID'
++
++DEVICE_CLASS = 'org.onmyoji.oas.android.root.Device'
++DISPLAY_SERVER_CLASS = 'org.onmyoji.oas.android.root.DisplayServer'
++
++# 虚拟屏名以它开头（DisplayServer.create 默认 name='oas'，daemon 建的多半是 oas-xxx）
++VDISPLAY_PREFIX = 'oas-'
++
++
++def _jclass(name):
++    """Chaquopy 才有的 `java.jclass`；放到调用时导入，保证纯 CPython 下也能 py_compile。"""
++    from java import jclass
++    return jclass(name)
++
++
++def _device():
++    """Kotlin 侧 Device（实例方法：tapOnDisplay / captureRaw ...）。"""
++    return _jclass(DEVICE_CLASS)()
++
++
++def _display_server():
++    """Kotlin 侧 DisplayServer 是 `object`，方法挂在 INSTANCE 上。"""
++    cls = _jclass(DISPLAY_SERVER_CLASS)
++    return getattr(cls, 'INSTANCE', cls)
++
++
++def _oas_device():
++    """app/src/main/python/oas_device.py：解码与画布映射的单一真相源。"""
++    import oas_device
++    return oas_device
++
++
++class AndroidImpl:
++    """挂进 Screenshot / Control 基类的最小 mixin，只提供两条 android 通道。
++
++    命名跟上游惯例：`screenshot_<method>` / `click_<method>`，由两个 dict 按
++    config.script.device.screenshot_method / control_method 的值分发。
++    """
++
++    # 实例级缓存（类默认值 None；首次解析后写到 self 上，之后不再问 daemon）
++    _android_display_id = None
++
++    # ------------------------------------------------------------------ #
++    # displayId
++    # ------------------------------------------------------------------ #
++
++    def _android_display(self):
++        """取虚拟屏 displayId：env 优先 → daemon `list` 首个非 0 的 oas- 屏 → 缓存。"""
++        if self._android_display_id is not None:
++            return self._android_display_id
++
++        env = os.environ.get(ENV_DISPLAY_ID, '').strip()
++        if env:
++            try:
++                display_id = int(env)
++            except ValueError:
++                raise RuntimeError(
++                    '%s=%r 不是数字，无法当作虚拟屏 displayId' % (ENV_DISPLAY_ID, env)
++                )
++            self._android_display_id = display_id
++            logger.attr('AndroidDisplay', display_id)
++            return display_id
++
++        raw = _display_server().list()
++        try:
++            info = json.loads(raw or '{}')
++        except ValueError:
++            info = {}
++        for item in info.get('displays') or []:
++            try:
++                display_id = int(item.get('displayId', -1))
++            except (TypeError, ValueError):
++                continue
++            if display_id > 0 and str(item.get('name', '')).startswith(VDISPLAY_PREFIX):
++                self._android_display_id = display_id
++                logger.attr('AndroidDisplay', display_id)
++                return display_id
++
++        # 不静默返回 -1：宁可在第一次截图时炸掉，也不要拿着错误 id 一路跑
++        raise RuntimeError(
++            '找不到 OAS 虚拟屏：daemon list 里没有 displayId>0 且 name 以 %r 开头的屏。'
++            '请先建屏，或显式设环境变量 %s' % (VDISPLAY_PREFIX, ENV_DISPLAY_ID)
++        )
++
++    # ------------------------------------------------------------------ #
++    # 截图
++    # ------------------------------------------------------------------ #
++
++    def screenshot_android(self):
++        """daemon grab 一帧虚拟屏，返回 1280x720 的 BGR ndarray（OAS 口径）。"""
++        oas = _oas_device()
++        display_id = self._android_display()
++
++        raw_path = os.path.join(tempfile.gettempdir(), 'oas-android-%d.raw' % display_id)
++        size = _display_server().grabRaw(display_id, raw_path)
++        size = int(size or 0)
++        if size <= 0:
++            raise RuntimeError(
++                'daemon grab 失败（displayId=%d, out=%s），检查 daemon 是否在跑、屏是否还在'
++                % (display_id, raw_path)
++            )
++        try:
++            with open(raw_path, 'rb') as fp:
++                data = fp.read()
++        finally:
++            # raw 是整屏字节，留着白占空间
++            try:
++                os.remove(raw_path)
++            except OSError:
++                pass
++
++        image, _format = oas.decode_raw(data)          # (h, w, 3)，RGB
++        image = np.ascontiguousarray(image[:, :, ::-1])  # → BGR
++        image = self._android_fit_canvas(oas, image)
++        logger.attr('Screenshot_android', '%dx%d' % (image.shape[1], image.shape[0]))
++        return image
++
++    @staticmethod
++    def _android_fit_canvas(oas, image):
++        """虚拟屏不是 1280x720 时按 oas_device 的口径裁切 / letterbox，并发布坐标映射。
++
++        映射复用 oas_device._last_map（canvas_to_device 只读它，没有公开 setter），
++        这样点击换算与截图口径永远是同一套，不会出现「图裁了、点没裁」。
++        """
++        height, width = image.shape[0], image.shape[1]
++        if width == CANVAS_W and height == CANVAS_H:
++            crop_rect = (0, 0, width, height)
++            dst_rect = (0, 0, CANVAS_W, CANVAS_H)
++            mode = 'crop'
++        else:
++            rect = oas.detect_content_rect(image)
++            crop_rect, dst_rect, mode = oas.fit_to_canvas(rect, width, height)
++            crop = image[crop_rect[1]:crop_rect[3], crop_rect[0]:crop_rect[2]]
++            image = oas.to_canvas(crop, dst_rect)
++            logger.attr('Screenshot_android_fit', '%dx%d -> %s' % (width, height, mode))
++
++        last_map = oas._last_map
++        last_map.clear()
++        last_map.update({
++            'screen_w': width,
++            'screen_h': height,
++            'rect': crop_rect,
++            'dst': dst_rect,
++            'mode': mode,
++        })
++        return image
++
++    # ------------------------------------------------------------------ #
++    # 点击
++    # ------------------------------------------------------------------ #
++
++    def click_android(self, x, y):
++        """1280x720 画布坐标 → 虚拟屏像素坐标 → `input -d <id> tap`。"""
++        oas = _oas_device()
++        display_id = self._android_display()
++
++        try:
++            ok = oas.tap_canvas(x, y, display_id)
++        except RuntimeError:
++            # 还没截过图 → 没有映射；虚拟屏按 1280x720 建，画布坐标与设备坐标 1:1
++            logger.warning('click_android: 还没有截图映射，按 1:1 画布坐标点击')
++            ok = _device().tapOnDisplay(int(x), int(y), display_id)
++
++        if not ok:
++            raise RuntimeError(
++                'input -d %d tap 失败 @ (%s, %s)' % (display_id, x, y)
++            )
++
++        # 与 click_adb 保持同一个最小点击间隔，避免连点被 input 吞掉
++        self.sleep(0.05)
+--- a/vendor/oas/module/device/screenshot.py
++++ b/vendor/oas/module/device/screenshot.py
+@@ -13,6 +13,7 @@
+ from module.base.utils import get_color, image_size, limit_in, save_image
+ from module.device.env import IS_WINDOWS
+ from module.device.method.adb import Adb
++from module.device.method.android_impl import AndroidImpl
+ from module.device.method.windows import Window
+ from module.device.method.droidcast import DroidCast
+ from module.device.method.scrcpy import Scrcpy
+@@ -21,7 +22,7 @@
+ from module.logger import logger
+ 
+ 
+-class Screenshot(Adb, DroidCast, Scrcpy, Window, NemuIpc):
++class Screenshot(Adb, DroidCast, Scrcpy, Window, NemuIpc, AndroidImpl):
+     _screen_size_checked = False
+     _screen_black_checked = False
+     _minicap_uninstalled = False
+@@ -37,6 +38,7 @@
+     def screenshot_methods(self):
+         return {
+             'ADB': self.screenshot_adb,
++            'android': self.screenshot_android,
+             'ADB_nc': self.screenshot_adb_nc,
+             'uiautomator2': self.screenshot_uiautomator2,
+             # 'aScreenCap': self.screenshot_ascreencap,
+--- a/vendor/oas/module/device/control.py
++++ b/vendor/oas/module/device/control.py
+@@ -7,12 +7,13 @@
+ from module.device.env import IS_WINDOWS
+ from module.device.method.minitouch import Minitouch
+ from module.device.method.adb import Adb
++from module.device.method.android_impl import AndroidImpl
+ from module.device.method.scrcpy import Scrcpy
+ from module.device.method.windows import Window
+ from module.logger import logger
+ 
+ 
+-class Control(Minitouch, Adb, Scrcpy, Window):
++class Control(Minitouch, Adb, Scrcpy, Window, AndroidImpl):
+     def handle_control_check(self, button):
+         # Will be overridden in Device
+         pass
+@@ -21,6 +22,7 @@
+     def click_methods(self):
+         return {
+             'ADB': self.click_adb,
++            'android': self.click_android,
+             'uiautomator2': self.click_uiautomator2,
+             'minitouch': self.click_minitouch,
+             'window_message': self.click_window_message if IS_WINDOWS else None,
