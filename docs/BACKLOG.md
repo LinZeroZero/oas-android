@@ -113,3 +113,14 @@
   - 已试过并失败：设备无 `sqlite3`；proot python3 + sqlite 3.45.1 直改 `chats."group"`（先 `chmod 666` 三件套）→ 当场 `integrity_check=ok`、汇总正确，但 App 运行时把内存旧行整行写回，杀进程重启仍回退（`None 1 / OAS安卓端适配 9 / 子任务 3`）
   - 现状处置（用户决策 2026-11-15）：**不追分组**，靠 `OAS-<角色><序号> <任务>` 标题前缀识别接力会话；需归组时由用户手动移动
   - 归属：工具侧限制（非本项目代码问题）；若 Operit 后续提供设置分组的 API，再回来关掉这条
+
+- [ ] **BG-32 长时挂机没有可复现的检测手段**（工具已交付并评审通过，真机长跑待做）
+  - 交付：`tools/hang_check.sh`（542 行，写手 A5 实现；D 独立评审 **PASS with nits**，2026-11-15）
+  - 形态：Android root shell（toybox `sh`），`start` / `status` / `stop` / `help`；只读 `/proc`、`/sys/power/wake_lock`、`dumpsys`；不改系统设置、不装应用、不注册自启动；自己不建屏、不拉游戏
+  - 每拍 15 列（`|` 分隔）：`ts|awake|ndisp|did|dpid|djiff|gpid|gjiff|sfjiff|wl|load1|memfree|frames|dstate|gstate`
+  - 判定：样本<3 或 <60s → 「样本太短」；daemon/游戏 有样本 pid=0 → FAIL；虚拟屏=0 → FAIL；`D`/`T` 状态样本 ≥25% → FAIL（疑似 cgroup freezer 冻住）；帧数采到但无增长 → FAIL；CSV 列错位 → FAIL；否则 PASS（CPU 全无增长记 WARN）
+  - 防坑（本轮评审逼出来的）：kill 前用 `/proc/<pid>/cmdline` 校验身份（防 pid 复用误杀）、stop 后清 `sampler.pid`（幂等）、`wl` 剔 `|` 防列错位、awk 用 `app[_]process` 写法防自我命中
+  - 已验证：阴性对照（无 daemon/游戏/虚拟屏 → FAIL 且逐项点名）、陈旧 pidfile 不误杀（`sleep 300` 存活）、重复 stop 幂等、`sh -n`/`bash -n` 通过
+  - **已知限制**（不阻塞，来自 D 的 nits）：① 游戏若跑在分身子进程（`pkg:xxx`），`pidof` 精确名取不到 → 会以 FAIL 形式暴露（不是假 PASS），必要时加 `ps` 前缀兜底；② 若将来 daemon 改用 `--nice-name`，cmdline 会被改写成单一名字 → 身份校验全部失败、全样本判 FAIL；③ 小时级真实长跑的 PASS 路径尚未跑过
+  - 用法：`su -c 'sh tools/hang_check.sh start'` → 锁屏挂机 → `su -c 'sh tools/hang_check.sh stop'`
+  - 归属：A5（代码）/ D（评审）/ 主 AI（签发）/ 用户（真机长跑配合）
