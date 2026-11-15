@@ -10,7 +10,9 @@
 # 环境变量（都可选）：
 #   OAS_INTERVAL=5          采样间隔（秒）
 #   OAS_HANG_DIR=<dir>      会话目录；不设则 /data/local/tmp/oas-hang/<时间戳>
-#   OAS_DISPLAY_ID=<id>     虚拟屏 id；不设则从 dumpsys display 的 'oas-' 行里取
+#   OAS_DISPLAY_ID=<id>     虚拟屏 id；不设则从 dumpsys display 的 DisplayInfo{"oas"…displayId N} 推
+#   OAS_FRAMES_EVERY=5      frames 走 app 通道时每 N 拍取一次
+#   OAS_SERVER_JAR=<jar>    daemon --cmd 用的 server.jar（默认 app files 目录里那份）
 #   OAS_GAME_PKG=<pkg>      游戏包名，默认 com.netease.onmyoji
 #   OAS_DAEMON_PID / OAS_GAME_PID   直接钉死 pid（调试用，跳过自动识别）
 #
@@ -81,13 +83,15 @@ proc_state() {
 # 为什么写成 app[_]process / oas[.]server[.]Main：本函数自己那条 awk 的命令行里包含这些
 # 模式文本，而方括号里的字符**匹配不到自己**（"app[_]process" 这个字样里没有 "app_process"），
 # 所以不靠 `$2 != "awk"` 那种侥幸判断也不会自我命中。PID 列再卡一次纯数字。
+# 关键：必须排除我们/别人用 `--cmd` 拉起来的**瞬时 JVM**（它们的 cmdline 同样含
+# app_process 与 oas.server.Main，被认成 daemon 会让 dpid 记成 JVM、下拍消失 → 假 FAIL）。
 daemon_pid() {
     if [ -n "${OAS_DAEMON_PID:-}" ]; then
         echo "$OAS_DAEMON_PID"
         return
     fi
     ps -A -o PID,ARGS 2>/dev/null |
-        awk '$1 ~ /^[0-9]+$/ && /app[_]process/ && /oas[.]server[.]Main/ { print $1; exit }'
+        awk '$1 ~ /^[0-9]+$/ && /app[_]process/ && /oas[.]server[.]Main/ && !/--cm[d]/ { print $1; exit }'
 }
 
 pid_or_zero() {
@@ -136,10 +140,14 @@ pid_is_sampler() {
     return 1
 }
 
-# daemon 身份：cmdline 必须同时含 app_process 与 oas.server.Main。
+# daemon 身份：cmdline 必须同时含 app_process 与 oas.server.Main，
+# 且**不是** `--cmd` 拉起的一次性 JVM（那种进程是瞬时的，认成 daemon 会让 dpid 记错）。
 pid_is_daemon() {
     pid_matches "$1" app_process || return 1
     pid_matches "$1" oas.server.Main || return 1
+    case "$(tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null)" in
+        *--cm[d]*) return 1 ;;
+    esac
     return 0
 }
 
@@ -161,10 +169,13 @@ game_pid() {
 # `DisplayInfo{"oas"...}` 行里，`mDisplayId=` 这个写法在虚拟屏上抓不到。
 # 所以统一从 DisplayInfo{"oas... 行抽 id，并按 id 去重计数。
 # ---------------------------------------------------------------------------- #
-VDISP_SED='s/.*DisplayInfo{"oas[^}]*displayId \([0-9][0-9]*\).*/\1/p'
+VDISP_RE='DisplayInfo\{"oas("|[-_])[^}]*displayId [0-9]+'
 
 vdisp_ids() {
-    dumpsys display 2>/dev/null | sed -n "$VDISP_SED" | sort -u
+    dumpsys display 2>/dev/null |
+        grep -oE "$VDISP_RE" |
+        sed -n 's/.*displayId \([0-9][0-9]*\)$/\1/p' |
+        sort -u
 }
 
 # daemon 的一次性 CLI 通道：app_process 起 server.jar 的 --cmd（不 bind socket、不常驻）。
@@ -179,22 +190,11 @@ daemon_cmd() {
         CLASSPATH="$SERVER_JAR" "$APP_PROCESS" /system/bin org.onmyoji.oas.server.Main --cmd "$1"
     ) 2>/dev/null | head -1
 }
-
-# 虚拟屏数量：dumpsys 抽 id 去重；抽不到（换 ROM / 改名）时问 daemon 的 list。
-vdisp_count() {
-    ids=${1:-$(vdisp_ids)}
-    n=$(printf '%s\n' "$ids" | grep -c '[0-9]')
-    case "$n" in
-        '' | *[!0-9]*) n=0 ;;
-    esac
-    if [ "$n" = 0 ]; then
-        n=$(printf '%s' "$(daemon_cmd list)" | grep -o '"displayId":[0-9][0-9]*' | wc -l)
-        case "$n" in
-            '' | *[!0-9]*) n=0 ;;
-        esac
-    fi
-    echo "$n"
+# 兜底：问 daemon 要 displayId 列表（每行一个）。**每拍别调**，拉一次 JVM 很贵。
+daemon_disp_ids() {
+    printf '%s' "$(daemon_cmd list)" | grep -o '"displayId":[0-9][0-9]*' | cut -d: -f2
 }
+
 
 vdisp_id() {
     if [ -n "${OAS_DISPLAY_ID:-}" ]; then
@@ -207,7 +207,7 @@ vdisp_id() {
         return
     fi
     # 兜底：daemon list（权威，但要拉一次 app_process，所以只在 dumpsys 抽不到时用）
-    printf '%s' "$(daemon_cmd list)" | grep -o '"displayId":[0-9][0-9]*' | head -1 | cut -d: -f2
+    daemon_disp_ids | head -1
 }
 
 # 帧数通路：python3 直连抽象 socket（开发机）→ app_process --cmd（本机）→ 无。
@@ -280,17 +280,37 @@ sample_once() {
     ts=$(date +%s 2>/dev/null)
     [ -n "$ts" ] || ts=0
 
+    # 负载/内存先取：后面若走 app_process 兜底会拉起 JVM 抬高本拍负载，取晚了就是「被自己污染」的数
+    load1=$(awk '{ print $1 }' /proc/loadavg 2>/dev/null)
+    [ -n "$load1" ] || load1='-'
+    memfree=$(awk '/^MemFree:/ { print $2 }' /proc/meminfo 2>/dev/null)
+    [ -n "$memfree" ] || memfree='-'
+
     awake=$(dumpsys power 2>/dev/null | sed -n 's/.*mWakefulness=\([A-Za-z]*\).*/\1/p' | head -1)
     [ -n "$awake" ] || awake='?'
 
-    # 虚拟屏：只 dumpsys 一次，id 列表同时供「数量」和「displayId」用
+    # 虚拟屏：本拍只 dumpsys 一次，同一份 id 列表同时推出「数量」和「displayId」。
+    # dumpsys 抽不到（换 ROM / 改名）才问 daemon，且**只问一次**：结果缓存在
+    # CACHED_DID / CACHED_NDISP（'-' 表示问过且没有），后续拍不再重复拉 JVM。
     ids=$(vdisp_ids)
-    ndisp=$(vdisp_count "$ids")
+    if [ -n "$ids" ]; then
+        ndisp=$(printf '%s\n' "$ids" | grep -c '[0-9]')
+        CACHED_DID=$(printf '%s\n' "$ids" | head -1)
+        CACHED_NDISP=$ndisp
+    else
+        if [ -z "${CACHED_DID:-}" ] || [ -z "${CACHED_NDISP:-}" ]; then
+            ids_from_daemon=$(daemon_disp_ids)
+            CACHED_DID=$(printf '%s\n' "$ids_from_daemon" | head -1)
+            [ -n "$CACHED_DID" ] || CACHED_DID='-'
+            CACHED_NDISP=$(printf '%s\n' "$ids_from_daemon" | grep -c '[0-9]')
+            [ -n "$CACHED_NDISP" ] || CACHED_NDISP=0
+        fi
+        ndisp=$CACHED_NDISP
+    fi
     if [ -n "${OAS_DISPLAY_ID:-}" ]; then
         did=$OAS_DISPLAY_ID
     else
-        did=$(printf '%s\n' "$ids" | head -1)
-        [ -n "$did" ] || did=$(vdisp_id)   # dumpsys 抽不到 → 问 daemon list
+        did=${CACHED_DID:-}
     fi
     [ -n "$did" ] || did='-'
 
@@ -305,9 +325,6 @@ sample_once() {
         gpid=0
     fi
     sfpid=$(pid_or_zero "$(pidof surfaceflinger 2>/dev/null | awk '{ print $1 }')")
-
-    did=$(vdisp_id)
-    [ -n "$did" ] || did='-'
 
     dj=0
     gj=0
@@ -330,12 +347,6 @@ sample_once() {
     # 这行的任何字段都不能带 '|'，否则 15 列会整体错位，报告按列号取数就会假 PASS
     wl=$(tr '\n' ' ' </sys/power/wake_lock 2>/dev/null | tr -s ' ' ',' | sed 's/^,//; s/,$//; s/|/\//g')
     [ -n "$wl" ] || wl='-'
-
-    load1=$(awk '{ print $1 }' /proc/loadavg 2>/dev/null)
-    [ -n "$load1" ] || load1='-'
-
-    memfree=$(awk '/^MemFree:/ { print $2 }' /proc/meminfo 2>/dev/null)
-    [ -n "$memfree" ] || memfree='-'
 
     frames=$(frames_of "$did" "$tick")
 
@@ -634,7 +645,10 @@ do_stop() {
                     why = why "daemon+游戏 CPU +" (dd + gd) " jiffies；"
                     if (havef) why = why "帧数 +" fdelta "；"
                 }
-                if (!havef) why = why "帧数未取到（通路=" FRAMES_CH "，见「帧数通路」）；"
+                if (!havef) {
+                    why = why "帧数未采到（n/a " fna + 0 "/" n " 拍，通路=" FRAMES_CH "）→「帧数未增长」判据未生效；"
+                    if (verdict == "PASS") verdict = "WARN"
+                }
             }
         }
         printf "\n判定: %s\n", verdict
@@ -653,7 +667,7 @@ do_stop() {
 }
 
 do_help() {
-    sed -n '2,23p' "$0"
+    sed -n '2,25p' "$0"
 }
 
 # ---- 入口 -------------------------------------------------------------------
