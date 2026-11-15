@@ -10,7 +10,9 @@
 # 环境变量（都可选）：
 #   OAS_INTERVAL=5          采样间隔（秒）
 #   OAS_HANG_DIR=<dir>      会话目录；不设则 /data/local/tmp/oas-hang/<时间戳>
-#   OAS_DISPLAY_ID=<id>     虚拟屏 id；不设则从 dumpsys display 的 'oas-' 行里取
+#   OAS_DISPLAY_ID=<id>     虚拟屏 id；不设则从 dumpsys display 的 DisplayInfo{"oas"…displayId N} 推
+#   OAS_FRAMES_EVERY=5      frames 走 app 通道时每 N 拍取一次
+#   OAS_SERVER_JAR=<jar>    daemon --cmd 用的 server.jar（默认 app files 目录里那份）
 #   OAS_GAME_PKG=<pkg>      游戏包名，默认 com.netease.onmyoji
 #   OAS_DAEMON_PID / OAS_GAME_PID   直接钉死 pid（调试用，跳过自动识别）
 #
@@ -28,10 +30,21 @@ INTERVAL=${OAS_INTERVAL:-5}
 BASE=${OAS_HANG_BASE:-/data/local/tmp/oas-hang}
 COLS='ts|awake|ndisp|did|dpid|djiff|gpid|gjiff|sfjiff|wl|load1|memfree|frames|dstate|gstate'
 
+# daemon 一次性 CLI 通道（app_process + server.jar --cmd）。本机没有 python3，
+# nc 又不支持抽象命名空间 socket，这是唯一可用通路（BG-19 已用同一条路验过）。
+SERVER_JAR=${OAS_SERVER_JAR:-/data/user/0/org.onmyoji.oas.android/files/oas/server/server.jar}
+APP_PROCESS=${OAS_APP_PROCESS:-/system/bin/app_process}
+# frames 走 app 通道时每 N 拍取一次：每拍拉一个 app_process 太吃 CPU，会污染 loadavg
+FRAMES_EVERY=${OAS_FRAMES_EVERY:-5}
+
 case "$INTERVAL" in
     '' | *[!0-9]*) INTERVAL=5 ;;
 esac
 [ "$INTERVAL" -ge 1 ] || INTERVAL=5
+case "$FRAMES_EVERY" in
+    '' | *[!0-9]*) FRAMES_EVERY=5 ;;
+esac
+[ "$FRAMES_EVERY" -ge 1 ] || FRAMES_EVERY=5
 
 SELF=$(readlink -f "$0" 2>/dev/null)
 [ -n "${SELF:-}" ] || SELF=$0
@@ -70,13 +83,15 @@ proc_state() {
 # 为什么写成 app[_]process / oas[.]server[.]Main：本函数自己那条 awk 的命令行里包含这些
 # 模式文本，而方括号里的字符**匹配不到自己**（"app[_]process" 这个字样里没有 "app_process"），
 # 所以不靠 `$2 != "awk"` 那种侥幸判断也不会自我命中。PID 列再卡一次纯数字。
+# 关键：必须排除我们/别人用 `--cmd` 拉起来的**瞬时 JVM**（它们的 cmdline 同样含
+# app_process 与 oas.server.Main，被认成 daemon 会让 dpid 记成 JVM、下拍消失 → 假 FAIL）。
 daemon_pid() {
     if [ -n "${OAS_DAEMON_PID:-}" ]; then
         echo "$OAS_DAEMON_PID"
         return
     fi
     ps -A -o PID,ARGS 2>/dev/null |
-        awk '$1 ~ /^[0-9]+$/ && /app[_]process/ && /oas[.]server[.]Main/ { print $1; exit }'
+        awk '$1 ~ /^[0-9]+$/ && /app[_]process/ && /oas[.]server[.]Main/ && !/--cm[d]/ { print $1; exit }'
 }
 
 pid_or_zero() {
@@ -125,10 +140,14 @@ pid_is_sampler() {
     return 1
 }
 
-# daemon 身份：cmdline 必须同时含 app_process 与 oas.server.Main。
+# daemon 身份：cmdline 必须同时含 app_process 与 oas.server.Main，
+# 且**不是** `--cmd` 拉起的一次性 JVM（那种进程是瞬时的，认成 daemon 会让 dpid 记错）。
 pid_is_daemon() {
     pid_matches "$1" app_process || return 1
     pid_matches "$1" oas.server.Main || return 1
+    case "$(tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null)" in
+        *--cm[d]*) return 1 ;;
+    esac
     return 0
 }
 
@@ -140,26 +159,85 @@ game_pid() {
     pid_or_zero "$(pidof "$GAME_PKG" 2>/dev/null | awk '{ print $1 }')"
 }
 
+# ---------------------------------------------------------------------------- #
+# 虚拟屏识别（2026-11-15 22:13 真机实测口径）
+#
+#   DisplayDeviceInfo{"oas", uniqueId="virtual:com.android.shell,0,oas,0", 1280 x 720, density 320}
+#   mBaseDisplayInfo=DisplayInfo{"oas", displayId 34, logicalWidth 1280, ...}
+#
+# 名字就是 **oas**（没有连字符），`grep -c 'oas-'` 恒为 0；displayId 只出现在
+# `DisplayInfo{"oas"...}` 行里，`mDisplayId=` 这个写法在虚拟屏上抓不到。
+# 所以统一从 DisplayInfo{"oas... 行抽 id，并按 id 去重计数。
+# ---------------------------------------------------------------------------- #
+VDISP_RE='DisplayInfo\{"oas("|[-_])[^}]*displayId [0-9]+'
+
+vdisp_ids() {
+    dumpsys display 2>/dev/null |
+        grep -oE "$VDISP_RE" |
+        sed -n 's/.*displayId \([0-9][0-9]*\)$/\1/p' |
+        sort -u
+}
+
+# daemon 的一次性 CLI 通道：app_process 起 server.jar 的 --cmd（不 bind socket、不常驻）。
+daemon_cmd() {
+    [ -f "$SERVER_JAR" ] || return 1
+    [ -x "$APP_PROCESS" ] || return 1
+    # app_process 在默认 cwd 起会 SIGSEGV，必须先 cd 到真实存在的目录（evidence 20261115-0057 §0）
+    workdir=${OAS_WORKDIR:-/data/local/tmp}
+    [ -d "$workdir" ] || workdir=/
+    (
+        cd "$workdir" 2>/dev/null || cd /
+        CLASSPATH="$SERVER_JAR" "$APP_PROCESS" /system/bin org.onmyoji.oas.server.Main --cmd "$1"
+    ) 2>/dev/null | head -1
+}
+# 兜底：问 daemon 要 displayId 列表（每行一个）。**每拍别调**，拉一次 JVM 很贵。
+daemon_disp_ids() {
+    printf '%s' "$(daemon_cmd list)" | grep -o '"displayId":[0-9][0-9]*' | cut -d: -f2
+}
+
+
 vdisp_id() {
     if [ -n "${OAS_DISPLAY_ID:-}" ]; then
         echo "$OAS_DISPLAY_ID"
         return
     fi
-    dumpsys display 2>/dev/null | grep 'oas-' | head -1 |
-        sed -n 's/.*mDisplayId=\([0-9][0-9]*\).*/\1/p' | head -1
-}
-
-# 帧数：走抽象 socket 问 daemon 的 `stats <id>`。没有 python3 就记 "-"，
-# 绝不让帧数采集失败把整个采样搞挂。注意命令必须以 \n 结尾。
-frames_of() {
-    case "$1" in
-        '' | - | *[!0-9]*) echo "-"; return ;;
-    esac
-    if ! command -v python3 >/dev/null 2>&1; then
-        echo "-"
+    ids=$(vdisp_ids)
+    if [ -n "$ids" ]; then
+        printf '%s\n' "$ids" | head -1
         return
     fi
-    python3 - "$1" <<'PY' 2>/dev/null || echo "-"
+    # 兜底：daemon list（权威，但要拉一次 app_process，所以只在 dumpsys 抽不到时用）
+    daemon_disp_ids | head -1
+}
+
+# 帧数通路：python3 直连抽象 socket（开发机）→ app_process --cmd（本机）→ 无。
+frames_channel() {
+    if [ -n "${OAS_FRAMES_CHANNEL:-}" ]; then
+        echo "$OAS_FRAMES_CHANNEL"
+        return
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        echo python
+        return
+    fi
+    if [ -f "$SERVER_JAR" ] && [ -x "$APP_PROCESS" ]; then
+        echo app
+        return
+    fi
+    echo none
+}
+
+# 取帧数。约定：数字 = 取到；`-` = 本拍被节流跳过（不是取不到）；
+# `n/a` = 该环境确实没有可用通路 —— 报告里会点名，绝不当成「没采到所以判据跳过」。
+frames_of() {
+    did=$1
+    tick=$2
+    case "$did" in
+        '' | - | *[!0-9]*) echo 'n/a'; return ;;
+    esac
+    channel=$(frames_channel)
+    if [ "$channel" = python ]; then
+        python3 - "$did" <<'PY' 2>/dev/null || echo 'n/a'
 import re
 import socket
 import sys
@@ -167,29 +245,74 @@ import sys
 s = socket.socket(socket.AF_UNIX)
 s.settimeout(6)
 try:
-    s.connect("\0oas.chan")
+    # 抽象名必须是 SocketServer.ABSTRACT_NAME（原来写的 oas.chan 是错的，永远连不上）
+    s.connect("\0org.onmyoji.oas.display")
     s.send(("stats %s\n" % sys.argv[1]).encode())
     data = s.recv(65536).decode()
 except Exception:
-    print("-")
+    print("n/a")
     raise SystemExit(0)
 m = re.search(r'"frames"\s*:\s*(-?[0-9]+)', data)
-print(m.group(1) if m else "-")
+print(m.group(1) if m else "n/a")
 PY
+        return
+    fi
+    if [ "$channel" = app ]; then
+        if [ "$((tick % FRAMES_EVERY))" -ne 0 ]; then
+            echo '-'
+            return
+        fi
+        value=$(daemon_cmd "stats $did" | grep -o '"frames":[-0-9][0-9]*' | head -1 | cut -d: -f2)
+        case "$value" in
+            '' | *[!0-9]*) echo 'n/a' ;;
+            *) echo "$value" ;;
+        esac
+        return
+    fi
+    echo 'n/a'
 }
 
 # ---- 单次采样 ---------------------------------------------------------------
 
 sample_once() {
     csv=$1
+    tick=${2:-0}
     ts=$(date +%s 2>/dev/null)
     [ -n "$ts" ] || ts=0
+
+    # 负载/内存先取：后面若走 app_process 兜底会拉起 JVM 抬高本拍负载，取晚了就是「被自己污染」的数
+    load1=$(awk '{ print $1 }' /proc/loadavg 2>/dev/null)
+    [ -n "$load1" ] || load1='-'
+    memfree=$(awk '/^MemFree:/ { print $2 }' /proc/meminfo 2>/dev/null)
+    [ -n "$memfree" ] || memfree='-'
 
     awake=$(dumpsys power 2>/dev/null | sed -n 's/.*mWakefulness=\([A-Za-z]*\).*/\1/p' | head -1)
     [ -n "$awake" ] || awake='?'
 
-    ndisp=$(dumpsys display 2>/dev/null | grep -c 'oas-')
-    [ -n "$ndisp" ] || ndisp=0
+    # 虚拟屏：本拍只 dumpsys 一次，同一份 id 列表同时推出「数量」和「displayId」。
+    # dumpsys 抽不到（换 ROM / 改名）才问 daemon，且**只问一次**：结果缓存在
+    # CACHED_DID / CACHED_NDISP（'-' 表示问过且没有），后续拍不再重复拉 JVM。
+    ids=$(vdisp_ids)
+    if [ -n "$ids" ]; then
+        ndisp=$(printf '%s\n' "$ids" | grep -c '[0-9]')
+        CACHED_DID=$(printf '%s\n' "$ids" | head -1)
+        CACHED_NDISP=$ndisp
+    else
+        if [ -z "${CACHED_DID:-}" ] || [ -z "${CACHED_NDISP:-}" ]; then
+            ids_from_daemon=$(daemon_disp_ids)
+            CACHED_DID=$(printf '%s\n' "$ids_from_daemon" | head -1)
+            [ -n "$CACHED_DID" ] || CACHED_DID='-'
+            CACHED_NDISP=$(printf '%s\n' "$ids_from_daemon" | grep -c '[0-9]')
+            [ -n "$CACHED_NDISP" ] || CACHED_NDISP=0
+        fi
+        ndisp=$CACHED_NDISP
+    fi
+    if [ -n "${OAS_DISPLAY_ID:-}" ]; then
+        did=$OAS_DISPLAY_ID
+    else
+        did=${CACHED_DID:-}
+    fi
+    [ -n "$did" ] || did='-'
 
     dpid=$(pid_or_zero "$(daemon_pid)")
     # pid 可能被复用（daemon 重启后旧 pid 变别人的）：cmdline 对不上就当这拍没 daemon，
@@ -202,9 +325,6 @@ sample_once() {
         gpid=0
     fi
     sfpid=$(pid_or_zero "$(pidof surfaceflinger 2>/dev/null | awk '{ print $1 }')")
-
-    did=$(vdisp_id)
-    [ -n "$did" ] || did='-'
 
     dj=0
     gj=0
@@ -228,13 +348,7 @@ sample_once() {
     wl=$(tr '\n' ' ' </sys/power/wake_lock 2>/dev/null | tr -s ' ' ',' | sed 's/^,//; s/,$//; s/|/\//g')
     [ -n "$wl" ] || wl='-'
 
-    load1=$(awk '{ print $1 }' /proc/loadavg 2>/dev/null)
-    [ -n "$load1" ] || load1='-'
-
-    memfree=$(awk '/^MemFree:/ { print $2 }' /proc/meminfo 2>/dev/null)
-    [ -n "$memfree" ] || memfree='-'
-
-    frames=$(frames_of "$did")
+    frames=$(frames_of "$did" "$tick")
 
     printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
         "$ts" "$awake" "$ndisp" "$did" "$dpid" "$dj" "$gpid" "$gj" \
@@ -291,10 +405,20 @@ do_start() {
     echo "采样间隔  : ${INTERVAL}s"
     echo "采样器 pid: $pid"
     echo "表头      : $COLS"
+    channel=$(frames_channel)
+    case "$channel" in
+        app)
+            echo "帧数采集  : app 通道（$SERVER_JAR --cmd 'stats <id>'），每 ${FRAMES_EVERY} 拍取一次"
+            ;;
+        python)
+            echo "帧数采集  : python3 直连抽象 socket（org.onmyoji.oas.display）"
+            ;;
+        *)
+            echo "帧数采集  : 无可用通路（既没 python3 也没有 server.jar/app_process）→ frames 记 n/a"
+            ;;
+    esac
     if [ "$did" = '-' ]; then
-        echo "帧数采集  : 没有虚拟屏 id，frames 会记 '-'（需 python3 才能问 daemon）"
-    else
-        echo "帧数采集  : 目标 displayId=$did（需 python3 才能问 daemon）"
+        echo "注意      : 当前没抓到虚拟屏 id，等建屏后会自动跟上"
     fi
     echo
     echo "接下来："
@@ -306,8 +430,10 @@ do_start() {
 do_loop() {
     out=$1
     csv=$out/samples.csv
+    tick=0
     while [ ! -f "$out/STOP" ]; do
-        sample_once "$csv"
+        sample_once "$csv" "$tick"
+        tick=$((tick + 1))
         i=0
         while [ "$i" -lt "$INTERVAL" ]; do
             [ -f "$out/STOP" ] && break
@@ -365,7 +491,7 @@ do_stop() {
     rm -f "$out/sampler.pid"
 
     # ③ 出报告
-    report=$(awk -F'|' -v OUT="$out" '
+    report=$(awk -F'|' -v OUT="$out" -v FRAMES_CH="$(frames_channel)" -v FRAMES_EVERY="$FRAMES_EVERY" '
     NR == 1 { next }
     {
         # 列错位自检：正常是 15 列。少/多列说明有字段混进了分隔符竖线，
@@ -381,7 +507,6 @@ do_stop() {
             dj0 = $6 + 0
             gj0 = $8 + 0
             sf0 = $9 + 0
-            f_first = $13
             did = $4
         }
         t1 = t
@@ -399,6 +524,15 @@ do_stop() {
         ld = $11
         mf = $12
         f_last = $13
+        if ($13 == "n/a") fna++
+        else if ($13 == "-") fskip++
+        if ($13 ~ /^[0-9]+$/) {
+            # 帧数走节流通道，末拍常见 '-'/'n/a'，所以首末都按「最近一次真正取到的数」算，
+            # 否则有数据也会被误判成「未采到」
+            fcnt++
+            if (fcnt == 1) f_first = $13
+            f_lastnum = $13
+        }
         sf_last = $9 + 0
         dpid_last = $5
         gpid_last = $7
@@ -434,12 +568,21 @@ do_stop() {
         if (n > 0) offp = int(offn * 100 / n)
 
         havef = 0
-        if (f_first ~ /^[0-9]+$/ && f_last ~ /^[0-9]+$/) havef = 1
+        if (fcnt >= 2) havef = 1
         if (havef) {
-            fdelta = (f_last + 0) - (f_first + 0)
-            frtxt = f_first " → " f_last "（+" fdelta "）"
+            fdelta = (f_lastnum + 0) - (f_first + 0)
+            frtxt = f_first " → " f_lastnum "（+" fdelta "）"
         } else {
-            frtxt = "未采到（缺 python3 或虚拟屏 id 未知；不影响其它判据）"
+            frtxt = "未采到（原因见下一行「帧数通路」；其它判据照常跑，不静默跳过）"
+        }
+        if (FRAMES_CH == "none") {
+            chantxt = "无可用通路（无 python3 且缺 server.jar/app_process）→ frames 记 n/a"
+        } else if (FRAMES_CH == "app") {
+            chantxt = "app 通道：app_process --cmd stats <id>（默认每 " FRAMES_EVERY " 拍取一次）"
+        } else if (FRAMES_CH == "python") {
+            chantxt = "python3 直连抽象 socket org.onmyoji.oas.display"
+        } else {
+            chantxt = FRAMES_CH
         }
 
         printf "会话目录      : %s\n", OUT
@@ -457,6 +600,7 @@ do_stop() {
         printf "末次进程状态  : daemon=%s｜游戏=%s（R/S 正常，D/T 疑似被冻）\n", dst_last, gst_last
         printf "疑似冻结样本  : daemon %d/%d｜游戏 %d/%d（D/T 计数）\n", fzd + 0, n, fzg + 0, n
         printf "帧数          : %s\n", frtxt
+        printf "帧数通路      : %s｜n/a %d 拍｜节流跳过 %d 拍\n", chantxt, fna + 0, fskip + 0
         printf "CSV 列完整性  : %s\n", coltxt
 
         verdict = "PASS"
@@ -501,6 +645,10 @@ do_stop() {
                     why = why "daemon+游戏 CPU +" (dd + gd) " jiffies；"
                     if (havef) why = why "帧数 +" fdelta "；"
                 }
+                if (!havef) {
+                    why = why "帧数未采到（n/a " fna + 0 "/" n " 拍，通路=" FRAMES_CH "）→「帧数未增长」判据未生效；"
+                    if (verdict == "PASS") verdict = "WARN"
+                }
             }
         }
         printf "\n判定: %s\n", verdict
@@ -519,7 +667,7 @@ do_stop() {
 }
 
 do_help() {
-    sed -n '2,23p' "$0"
+    sed -n '2,25p' "$0"
 }
 
 # ---- 入口 -------------------------------------------------------------------
