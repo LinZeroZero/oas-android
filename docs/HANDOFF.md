@@ -397,30 +397,15 @@ app 只保留 UI + 前台服务 + socket 客户端。
 ## 十二、接力点（写手交棒用）
 > 制度见 `docs/WORKFLOW.md §1`：**一个写手位，可以换人，不可并行**。换棒时本节整节替换，不追加历史；**详细内容写在交接包里**（`docs/handoff/`）。
 
-- **分支**：`feat/bg22-setSurface`，head = `99022ea`（**未合 main**；已提交 `cb1faea` KeepAliveService 门控、`99022ea` evidence + `docs/research`）
-- **主 AI 交接包**：`docs/handoff/20261115-0150-main-ai.md`（调度位换人时先读这个；写手棒交接包是另一份）
-- **换棒判据**：上下文接近压缩阈值即换棒（256K × 0.7 ≈ 179K 词元，或消息数到 20 条触发总结）
-- **当前交接包**：`docs/handoff/20261115-0130-bg22-setSurface.md`（BG-22 七要素，面向写手 A4 续棒）
-- **写手位交接**：A（`519dbd40…`，97% 定格）→ A2（`8833100c-271d-4988-b752-ebce0f2321ca`，BG-19，定格）→ A3（`ca2b0219-0992-4e48-996d-dc9fcf071460`，BG-23，定格）→ A4（`3464a2d7-9d14-4b05-9ee2-35dcd7f6e265`，BG-21 pilot 已交回 `efc0588`）→ **本棒仍由 A4 续棒做 BG-22，不新建 A5**（依据：A4 仅 4 条消息、无输出截断记录；`WORKFLOW §1` 只禁并行、不要求每棒换人）
-- **本棒任务（BG-22）**：主屏熄屏时对虚拟屏 `setSurface(null)`，**默认关**（ship dark，仅显式 extra 生效）；一次装机两组熄屏实验（feature off 跑 65s = BG-21 新口径复现组；feature on 跑 65s = BG-22 效果组），两组都采 `kb run` 报告、`suspend_stats` 前后值、`dumpsys power | grep mHoldingDisplaySuspendBlocker`、`frames` 是否停增
-- **本轮决策（用户，2026-11-15）**：① **BG-21 官方口径先不改、不关闭**，先用预实验复现验证新口径（真熄屏 65s → `n/4=4/4` 且 C 段 `maxGap ≤1500ms`），拿到第二组数据再定案；② **BG-22 采纳 `setSurface(null)`**（默认关，用户已知情「虚拟屏停渲」的代价）；③ 会话**不追分组**，靠 `OAS-<角色><序号> <任务>` 标题前缀识别（BG-25）；④ 文档收口与交接包**外包给子会话**，主 AI 只做决策/验收/合并
-- **已验（2026-11-15）**：虚拟屏上跑通阴阳师（必须 `am force-stop` 后直启 `.Client`，见已知坑 1）；BG-22 的 `surface detach/attach` 在**亮屏**下是真停渲 / 真恢复 → 证据 `docs/evidence/20261115-1230-BG-22-vdisplay-game-frames.md`
-- **未验**：① 熄屏广播触发链路（`ACTION_SCREEN_OFF` → detach 那一行**代码在但没跑过**）；② 熄屏时虚拟屏是否仍在合成；③ OAS 脚本本体 65s 全流程
-- **已知坑**：
-  - 心跳每行格式固定 `{"ts":ms,"displayId":id,"frames":n,"pid":p}`（`Heartbeat.java`），别自创字段
-  - `displayId=-1` 时 `frames` 恒为 -1，不能用来判「画面在动」；要判渲染必须在真实虚拟屏 displayId 上跑
-  - daemon 在 root 域，日志必须双写 `/data/local/tmp/oas-daemon.log` + app cache
-  - 改完 jar 必须重跑 `tools/build_displayserver.sh` 覆盖 `app/src/main/assets/server/server.jar`
-  - 子会话**没有工作区附件**，主 AI 下指令必须贴绝对路径 `/data/user/0/com.ai.assistance.operit/files/workspace/8868caab-ae27-4814-9992-11fb83225a35`，否则它会去 `/sdcard` 下瞎找
-  - **工具分工**：工作区/git 用 `super_admin:terminal`（proot），摸设备用 `super_admin:shell`（root）；proot 里读 `/sys/power/*` 是 `Permission denied`（实测）
-  - 从 proot 连不上抽象 socket（`/proc/net/unix` Permission denied、`ConnectionRefused`）
-  - 【新】**`super_admin:shell` 默认 cwd 是已被删除的目录** → 任何 `app_process`（含 `kb run`）**必须先 `cd /data/local/tmp`**，否则 JVM 启动期 SIGSEGV（`System_specialProperties ← __strncat_chk`，`getcwd()` 返回 NULL）；`env -i` 不能绕过，只会变成「rc=0 但完全空跑」
-  - 【新】`dumpsys power` 里的 `displayId:N` **跟着当前前台画面走**（游戏 `:19`、Operit `:0`），脚本里禁止写死 19
-  - 【新】`am start --display N -n <pkg>/.tag0` **看似成功但没用**：游戏内部再跳 `.Client`，新 Activity 不带 `launchDisplayId` → 落回主屏（虚拟屏只剩黑）；必须先 `am force-stop` 再直启 `.Client`（BG-27）
-  - 【新】`nc -U @name` **不支持抽象命名空间**（直接 ENOENT），连 daemon 的抽象 socket 只能用 `KbClient`
-  - 【新】proot 里**写不了 `dist/`**（`Permission denied`），要落盘到那个目录得走 root shell 拷
-  - BG-22 已过 4-eyes 评审：P0 无阻塞；5×P1 + 3×P2 全部记入 BACKLOG BG-28（合 main 前置，本轮不改代码）。
-  - 虚拟屏方向由建屏宽高决定（`create oas-game 1280 720 240` 即横屏），与系统「自动旋转」无关；`grab` 回来 `bytes=3686416` 正好等于 `1280×720×4+16` 即证明拿到的是横屏整帧（实测）。
+- **分支**：`feat/bg22-setSurface`，head = `8948ee0`（**未合 main**，`main` = `f06411e`）；代码改动止于 `656ec1a`，其后的 7 个提交（`8c13c74`…`8948ee0`）**全为 doc-only**
+- **PR #20**：draft / open / base=main / 未合并 → https://github.com/LinZeroZero/oas-android/pull/20
+- **主 AI 交接包（当前唯一一份）**：`docs/HANDOFF-20261116.md`（七要素 + 会话名册 + 待办优先级 + 设备真值，2026-11-15 16:05 版）—— **调度位换人先读这份**
+- **写手棒交接包**：`docs/handoff/20261115-0130-bg22-setSurface.md`；模板与命名规则见 `docs/handoff/README.md`
+- **换棒判据**：上下文接近压缩阈值（256K × 0.7 ≈ 179K 词元，或消息数到 20 条触发总结）／连续被输出上限截断 ≥2 次／开始重复问同一件事
+- **写手位交接**：A（`519dbd40…`）→ A2（`8833100c-…`，BG-19）→ A3（`ca2b0219-…`，BG-23）→ **A4**（`3464a2d7-9d14-4b05-9ee2-35dcd7f6e265`，当前唯一代码位；已交 E2/E3/BG-31 A/B 三次真机取证，无输出截断记录 → **本棒不新建 A5**）
+- **本棒任务与去留**：BG-22 的三块代码（`401aa7e`/`82b5ceb`/`cb1faea`）在分支上、默认关；**E3 已推翻「虚拟屏致整机不睡」的原动机**，收益只剩「熄屏停渲」→ **去留待用户拍板**，细节见 `docs/HANDOFF-20261116.md` §1 与 §9
+- **决策状态（重要，勿沿用旧记录）**：早期记录里的「BG-22 已采纳 `setSurface(null)`」**已作废**（那是 E2/E3 之前的口径）；拍板前**不得 `merge` / `tag` / `revert`**。仍有效的用户口径：BG-21 官方判据先不改、会话靠 `OAS-<角色><序号> <任务>` 标题识别（BG-25）、文档收口可外包给子会话但主 AI 保留决策与验收
+- **状态、坑与排除记录的唯一来源**：`docs/HANDOFF-20261116.md`（七要素 + 20 条排除记录 + 设备真值 + 收工检查清单）。本节不再复制坑清单，避免两处漂移。
 
 ## 十三、许可
 
