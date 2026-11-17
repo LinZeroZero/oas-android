@@ -3,9 +3,17 @@ package org.onmyoji.oas.server;
 import org.onmyoji.oas.server.third.Ln;
 import org.onmyoji.oas.server.third.Workarounds;
 
+import android.net.LocalSocket;
+import android.net.LocalSocketAddress;
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 /**
@@ -26,6 +34,11 @@ import java.util.Locale;
  * 4) 一次性执行一条 socket 命令（不 bind socket、不常驻；给 --wait N 则轮询 kb status
  *    最多等 N ms，跑完（或超时告警）后打印结果退出）：
  *      app_process /system/bin org.onmyoji.oas.server.Main --cmd "kb run 3 3 3 -1 /path/report" --wait 20000
+ *    注意：这条路径是**本地新建一个 SocketServer 就地 dispatch**，看到的是空 DisplayEngine，
+ *    所以 `stats <id>` 之类依赖运行态的命令必然拿不到数（BG-32 长跑 frames 全 n/a 的根因）。
+ * 5) client 模式：连**正在运行的 daemon**问一条命令（抽象命名空间，写一行读一行原样打印）：
+ *      app_process /system/bin org.onmyoji.oas.server.Main --connect org.onmyoji.oas.display --cmd "stats 34"
+ *    连不上 / 超时 会打印 {"ok":false,...} 并以非 0 退出，调用方据此判定。
  */
 public final class Main {
 
@@ -36,6 +49,7 @@ public final class Main {
         String oncePath = null;
         String launchComponent = null;
         String cmdLine = null;   // --cmd <line>：不 bind socket，执行一条命令就退出
+        String connectName = null; // --connect <抽象名>：client 模式，把 --cmd 发给正在跑的 daemon
         boolean waitGiven = false;
         boolean wakeLock = false; // ADR-0001 ②：--wakelock on 才持锁（默认 off，先不改默认行为）
         int w = 1280;
@@ -84,6 +98,9 @@ public final class Main {
                     case "--cmd":
                         cmdLine = args[++i];
                         break;
+                    case "--connect":
+                        connectName = args[++i];
+                        break;
                     default:
                         Ln.w("忽略未知参数: " + a);
                         break;
@@ -120,6 +137,16 @@ public final class Main {
         }
 
         try {
+            if (connectName != null) {
+                // client 模式：**连正在运行的 daemon**，把 --cmd 那一行发过去、读回一行。
+                // 这是 `stats` / `list` 这类「看运行态」的命令唯一正确的走法；
+                // 老的 --cmd 是本地新建 SocketServer 就地 dispatch，DisplayEngine 是空的。
+                if (cmdLine == null) {
+                    System.err.println("--connect <抽象名> 需要配合 --cmd \"<一行命令>\"");
+                    System.exit(2);
+                }
+                System.exit(connectExec(connectName, cmdLine));
+            }
             if (cmdLine != null) {
                 // 一次性执行一条 socket 命令：不 bind socket、不常驻（为了不做 APK 也能验 kb run）。
                 // 后台线程（kb 段循环）挂在本进程上，--wait 用来给它留跑完的时间。
@@ -156,6 +183,60 @@ public final class Main {
         } finally {
             // 正常返回 / 异常退出都要放锁（System.exit 时 shutdown hook 也会兜一次）
             DaemonWakeLock.release();
+        }
+    }
+
+    // ------------------------------------------------------------------ //
+    // client 模式：连正在运行的 daemon（--connect）
+    //
+    // 为什么需要它：`--cmd` 那条老路径是在本进程里 new 一个 SocketServer 就地 dispatch，
+    // 它的 DisplayEngine 是空的 —— 所以 `stats <id>` 永远回 no such display、拿不到 frames。
+    // 想读运行态（frames / list）必须走抽象 socket 连到真的 daemon 上。
+    // ------------------------------------------------------------------ //
+
+    /** client 模式超时：与 app 侧 DisplayServer.rawCommand 的 2s 同口径。
+     *  不能放宽到采样间隔（默认 5s）以上，否则 daemon 一卡就把单拍拖长、造成 samples 空洞。 */
+    private static final int CONNECT_TIMEOUT_MS = 2000;
+
+    /**
+     * 连上名为 {@code name} 的抽象 socket，写一行 {@code line}，读回一行打印。
+     *
+     * @return 0 = 读到了回复；1 = 连不上 / 超时 / 对端关连接（此时 stdout 也会给一行 JSON，
+     *         调用方既能看退出码也能看内容）
+     */
+    private static int connectExec(String name, String line) {
+        LocalSocket socket = new LocalSocket();
+        try {
+            socket.connect(new LocalSocketAddress(name, LocalSocketAddress.Namespace.ABSTRACT));
+            socket.setSoTimeout(CONNECT_TIMEOUT_MS);
+
+            BufferedWriter out = new BufferedWriter(
+                    new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
+            out.write(line);
+            out.write("\n");
+            out.flush();
+
+            BufferedReader in = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            String response = in.readLine();
+            if (response == null) {
+                System.out.println("{\"ok\":false,\"error\":\"连接被关闭（无响应）\"}");
+                System.out.flush();
+                return 1;
+            }
+            System.out.println(response);
+            System.out.flush();
+            return 0;
+        } catch (Throwable t) {
+            System.out.println("{\"ok\":false,\"error\":\"connect failed: "
+                    + SocketServer.esc(String.valueOf(t)) + "\"}");
+            System.out.flush();
+            return 1;
+        } finally {
+            try {
+                socket.close();
+            } catch (Throwable ignored) {
+            }
         }
     }
 
