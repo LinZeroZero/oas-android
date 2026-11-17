@@ -194,8 +194,9 @@ public final class Main {
     // 想读运行态（frames / list）必须走抽象 socket 连到真的 daemon 上。
     // ------------------------------------------------------------------ //
 
-    /** client 模式超时：daemon 正常一拍就回，读不到就说明它卡住/没起。 */
-    private static final int CONNECT_TIMEOUT_MS = 8000;
+    /** client 模式超时：与 app 侧 DisplayServer.rawCommand 的 2s 同口径。
+     *  不能放宽到采样间隔（默认 5s）以上，否则 daemon 一卡就把单拍拖长、造成 samples 空洞。 */
+    private static final int CONNECT_TIMEOUT_MS = 2000;
 
     /**
      * 连上名为 {@code name} 的抽象 socket，写一行 {@code line}，读回一行打印。

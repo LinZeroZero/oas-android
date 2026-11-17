@@ -225,18 +225,25 @@ vdisp_id() {
 
 # 快路：直接读 daemon 心跳（Heartbeat.java 写的 JSONL，一行一拍）：
 #   {"ts":<epochMs>,"displayId":<id>,"frames":<累计帧>,"pid":<daemon pid>}
-# 末行新鲜（≤HB_MAX_AGE 秒）且 displayId 匹配就用它的 frames —— 省掉一次 app_process。
+# 末行新鲜（≤HB_MAX_AGE 秒）、displayId 匹配、且 **pid 与当前 daemon 一致** 才用它的 frames
+# （pid 校验防 daemon 重启瞬间混读旧值 → fdelta<0 被误判「帧数未增长」）。
+# $2 = 当前 daemon pid（由 sample_once 本拍已取到的 dpid 传入，不额外查询）。
 # 返回非 0 表示「这条快路给不出数」，由调用方回落主路。
 hb_frames() {
-    did=$1
+    local did=$1 want=$2 line hts hdid hfr hpid now age
+    case "$want" in
+        '' | 0 | *[!0-9]*) return 1 ;;
+    esac
     [ -f "$HB_FILE" ] || return 1
     line=$(tail -1 "$HB_FILE" 2>/dev/null)
     [ -n "$line" ] || return 1
     hts=$(printf '%s' "$line" | sed -n 's/.*"ts":\([0-9][0-9]*\).*/\1/p')
     hdid=$(printf '%s' "$line" | sed -n 's/.*"displayId":\([-0-9][0-9]*\).*/\1/p')
     hfr=$(printf '%s' "$line" | sed -n 's/.*"frames":\([-0-9][0-9]*\).*/\1/p')
+    hpid=$(printf '%s' "$line" | sed -n 's/.*"pid":\([0-9][0-9]*\).*/\1/p')
     case "$hts" in '' | *[!0-9]*) return 1 ;; esac
     [ "$hdid" = "$did" ] || return 1
+    [ "$hpid" = "$want" ] || return 1
     now=$(date +%s)
     age=$((now - hts / 1000))
     [ "$age" -ge 0 ] && [ "$age" -le "$HB_MAX_AGE" ] || return 1
@@ -266,11 +273,12 @@ frames_channel() {
 frames_of() {
     did=$1
     tick=$2
+    want_pid=$3
     case "$did" in
         '' | - | *[!0-9]*) echo 'n/a'; return ;;
     esac
-    # ① 快路：心跳文件新鲜就直接用（一次 tail，比拉 JVM 便宜得多）
-    if hb_value=$(hb_frames "$did"); then
+    # ① 快路：心跳文件新鲜且 daemon pid 对得上就直接用（一次 tail，比拉 JVM 便宜得多）
+    if hb_value=$(hb_frames "$did" "$want_pid"); then
         echo "$hb_value"
         return
     fi
@@ -387,7 +395,7 @@ sample_once() {
     wl=$(tr '\n' ' ' </sys/power/wake_lock 2>/dev/null | tr -s ' ' ',' | sed 's/^,//; s/,$//; s/|/\//g')
     [ -n "$wl" ] || wl='-'
 
-    frames=$(frames_of "$did" "$tick")
+    frames=$(frames_of "$did" "$tick" "$dpid")
 
     printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
         "$ts" "$awake" "$ndisp" "$did" "$dpid" "$dj" "$gpid" "$gj" \
@@ -484,8 +492,9 @@ do_loop() {
                 : >"$out/STOP"
                 printf '%s\n' "$MAX_DURATION" >"$out/timeout"
                 echo "$(date '+%F %T') 自停：已到上限 ${MAX_DURATION}s，收尾出报告"
-                # 直接复用 stop：它会落 STOP、杀采样器（就是本进程）、然后出报告落 report.txt
-                OAS_HANG_DIR="$out" sh "$SELF" stop
+                # 复用 stop 的判据输出，但必须告诉它「别 kill」：采样器就是本进程的父进程，
+                # kill 掉会留下半行 CSV → badcols → 假 FAIL（P2-1）
+                OAS_SELF_STOP=1 OAS_HANG_DIR="$out" sh "$SELF" stop
                 break
             fi
         fi
@@ -524,8 +533,12 @@ do_stop() {
     # ② kill 采样器：先 TERM，最多等 5s 再 KILL。
     # sampler.pid 停止后不会自己消失，pid 会被系统复用 —— 必须验 cmdline 身份，
     # 否则重复 stop / 换人接手时会打死无关进程。
+    # 例外：OAS_SELF_STOP=1 是采样器自己到点喊的 stop（自己是本进程的父进程），
+    # 这时 kill 会留半行 CSV → badcols 假 FAIL，所以整段跳过 kill，只清 pidfile。
     pid=$(pid_or_zero "$(cat "$out/sampler.pid" 2>/dev/null)")
-    if [ "$pid" = 0 ]; then
+    if [ "${OAS_SELF_STOP:-}" = "1" ]; then
+        echo "自停模式：跳过 kill（采样器即调用方）" >&2
+    elif [ "$pid" = 0 ]; then
         echo "提示: 没有 sampler.pid（或内容非法），跳过 kill" >&2
     elif ! pid_is_sampler "$pid"; then
         echo "警告: sampler.pid=$pid 不是本脚本的采样器（pid 已被复用？）→ 不 kill，只清 pidfile" >&2
