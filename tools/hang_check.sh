@@ -230,7 +230,7 @@ vdisp_id() {
 # $2 = 当前 daemon pid（由 sample_once 本拍已取到的 dpid 传入，不额外查询）。
 # 返回非 0 表示「这条快路给不出数」，由调用方回落主路。
 hb_frames() {
-    local did=$1 want=$2 line hts hdid hfr hpid now age
+    local did=$1 want=$2 line hts hsec hdid hfr hpid now age
     case "$want" in
         '' | 0 | *[!0-9]*) return 1 ;;
     esac
@@ -242,10 +242,20 @@ hb_frames() {
     hfr=$(printf '%s' "$line" | sed -n 's/.*"frames":\([-0-9][0-9]*\).*/\1/p')
     hpid=$(printf '%s' "$line" | sed -n 's/.*"pid":\([0-9][0-9]*\).*/\1/p')
     case "$hts" in '' | *[!0-9]*) return 1 ;; esac
+    # 设备 /system/bin/sh 是 mksh，算术是 **32 位**：13 位毫秒直接进 $(( )) 会被截断，
+    # age 会算成 ~1.79e9（真机实测），快路永远不命中。所以先纯字符串切掉毫秒三位。
+    case "${#hts}" in
+        13) ;;
+        *) return 1 ;;
+    esac
+    hsec=${hts%???}
+    case "$hsec" in
+        '' | *[!0-9]*) return 1 ;;
+    esac
     [ "$hdid" = "$did" ] || return 1
     [ "$hpid" = "$want" ] || return 1
     now=$(date +%s)
-    age=$((now - hts / 1000))
+    age=$((now - hsec))
     [ "$age" -ge 0 ] && [ "$age" -le "$HB_MAX_AGE" ] || return 1
     case "$hfr" in '' | *[!0-9]*) return 1 ;; esac
     echo "$hfr"
