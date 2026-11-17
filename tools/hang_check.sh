@@ -30,12 +30,19 @@ INTERVAL=${OAS_INTERVAL:-5}
 BASE=${OAS_HANG_BASE:-/data/local/tmp/oas-hang}
 COLS='ts|awake|ndisp|did|dpid|djiff|gpid|gjiff|sfjiff|wl|load1|memfree|frames|dstate|gstate'
 
-# daemon 一次性 CLI 通道（app_process + server.jar --cmd）。本机没有 python3，
-# nc 又不支持抽象命名空间 socket，这是唯一可用通路（BG-19 已用同一条路验过）。
+# daemon 通道：app_process + server.jar。
+# ⚠ 必须带 --connect：老的 `--cmd` 是在新进程里就地 dispatch（DisplayEngine 是空的），
+#   `stats` 永远回 no such display —— 上一轮 819 次 frames 全 n/a 就是这么来的。
+SOCKET_NAME=${OAS_SOCKET:-org.onmyoji.oas.display}
 SERVER_JAR=${OAS_SERVER_JAR:-/data/user/0/org.onmyoji.oas.android/files/oas/server/server.jar}
 APP_PROCESS=${OAS_APP_PROCESS:-/system/bin/app_process}
 # frames 走 app 通道时每 N 拍取一次：每拍拉一个 app_process 太吃 CPU，会污染 loadavg
 FRAMES_EVERY=${OAS_FRAMES_EVERY:-5}
+# 快路：daemon 心跳文件（Heartbeat.java 写，一行一拍），末行新鲜就直接读 frames，省一次 JVM
+HB_FILE=${OAS_HB_FILE:-/data/user/0/org.onmyoji.oas.android/files/oas/cache/keepalive_hb.jsonl}
+HB_MAX_AGE=${OAS_HB_MAX_AGE:-5}
+# 硬超时自停上限（秒，0=不限）：没人值守的长跑必须有尽头（上一轮被拉成 47.8 小时）
+MAX_DURATION=${OAS_MAX_DURATION:-900}
 
 case "$INTERVAL" in
     '' | *[!0-9]*) INTERVAL=5 ;;
@@ -45,6 +52,9 @@ case "$FRAMES_EVERY" in
     '' | *[!0-9]*) FRAMES_EVERY=5 ;;
 esac
 [ "$FRAMES_EVERY" -ge 1 ] || FRAMES_EVERY=5
+case "$MAX_DURATION" in
+    '' | *[!0-9]*) MAX_DURATION=900 ;;
+esac
 
 SELF=$(readlink -f "$0" 2>/dev/null)
 [ -n "${SELF:-}" ] || SELF=$0
@@ -178,7 +188,9 @@ vdisp_ids() {
         sort -u
 }
 
-# daemon 的一次性 CLI 通道：app_process 起 server.jar 的 --cmd（不 bind socket、不常驻）。
+# daemon 通道：app_process 起 server.jar 的 **client 模式**（--connect + --cmd）。
+# 为什么不直接用 --cmd：那个模式是本进程 new SocketServer 就地 dispatch，看不到运行态的
+# DisplayEngine，`stats` 只会回 no such display。
 daemon_cmd() {
     [ -f "$SERVER_JAR" ] || return 1
     [ -x "$APP_PROCESS" ] || return 1
@@ -187,7 +199,8 @@ daemon_cmd() {
     [ -d "$workdir" ] || workdir=/
     (
         cd "$workdir" 2>/dev/null || cd /
-        CLASSPATH="$SERVER_JAR" "$APP_PROCESS" /system/bin org.onmyoji.oas.server.Main --cmd "$1"
+        CLASSPATH="$SERVER_JAR" "$APP_PROCESS" /system/bin org.onmyoji.oas.server.Main \
+            --connect "$SOCKET_NAME" --cmd "$1"
     ) 2>/dev/null | head -1
 }
 # 兜底：问 daemon 要 displayId 列表（每行一个）。**每拍别调**，拉一次 JVM 很贵。
@@ -210,7 +223,28 @@ vdisp_id() {
     daemon_disp_ids | head -1
 }
 
-# 帧数通路：python3 直连抽象 socket（开发机）→ app_process --cmd（本机）→ 无。
+# 快路：直接读 daemon 心跳（Heartbeat.java 写的 JSONL，一行一拍）：
+#   {"ts":<epochMs>,"displayId":<id>,"frames":<累计帧>,"pid":<daemon pid>}
+# 末行新鲜（≤HB_MAX_AGE 秒）且 displayId 匹配就用它的 frames —— 省掉一次 app_process。
+# 返回非 0 表示「这条快路给不出数」，由调用方回落主路。
+hb_frames() {
+    did=$1
+    [ -f "$HB_FILE" ] || return 1
+    line=$(tail -1 "$HB_FILE" 2>/dev/null)
+    [ -n "$line" ] || return 1
+    hts=$(printf '%s' "$line" | sed -n 's/.*"ts":\([0-9][0-9]*\).*/\1/p')
+    hdid=$(printf '%s' "$line" | sed -n 's/.*"displayId":\([-0-9][0-9]*\).*/\1/p')
+    hfr=$(printf '%s' "$line" | sed -n 's/.*"frames":\([-0-9][0-9]*\).*/\1/p')
+    case "$hts" in '' | *[!0-9]*) return 1 ;; esac
+    [ "$hdid" = "$did" ] || return 1
+    now=$(date +%s)
+    age=$((now - hts / 1000))
+    [ "$age" -ge 0 ] && [ "$age" -le "$HB_MAX_AGE" ] || return 1
+    case "$hfr" in '' | *[!0-9]*) return 1 ;; esac
+    echo "$hfr"
+}
+
+# 帧数通路：python3 直连抽象 socket（开发机）→ app_process --connect（本机）→ 无。
 frames_channel() {
     if [ -n "${OAS_FRAMES_CHANNEL:-}" ]; then
         echo "$OAS_FRAMES_CHANNEL"
@@ -235,9 +269,14 @@ frames_of() {
     case "$did" in
         '' | - | *[!0-9]*) echo 'n/a'; return ;;
     esac
+    # ① 快路：心跳文件新鲜就直接用（一次 tail，比拉 JVM 便宜得多）
+    if hb_value=$(hb_frames "$did"); then
+        echo "$hb_value"
+        return
+    fi
     channel=$(frames_channel)
     if [ "$channel" = python ]; then
-        python3 - "$did" <<'PY' 2>/dev/null || echo 'n/a'
+        python3 - "$did" "$SOCKET_NAME" <<'PY' 2>/dev/null || echo 'n/a'
 import re
 import socket
 import sys
@@ -245,8 +284,8 @@ import sys
 s = socket.socket(socket.AF_UNIX)
 s.settimeout(6)
 try:
-    # 抽象名必须是 SocketServer.ABSTRACT_NAME（原来写的 oas.chan 是错的，永远连不上）
-    s.connect("\0org.onmyoji.oas.display")
+    # 抽象名由调用方传进来（默认 SocketServer.ABSTRACT_NAME = org.onmyoji.oas.display）
+    s.connect("\0" + sys.argv[2])
     s.send(("stats %s\n" % sys.argv[1]).encode())
     data = s.recv(65536).decode()
 except Exception:
@@ -390,8 +429,9 @@ do_start() {
 
     mkdir -p "$out" || die "建目录失败: $out"
     printf '%s\n' "$COLS" >"$csv"
-    # 上一轮遗留的 STOP 会让新采样器一起来就退出
-    rm -f "$out/STOP" "$out/report.txt"
+    # 上一轮遗留的 STOP / timeout 会让新采样器一起来就退出、或让报告误报「被自停」
+    rm -f "$out/STOP" "$out/report.txt" "$out/timeout"
+    printf '%s\n' "$MAX_DURATION" >"$out/limit"
 
     did=$(vdisp_id)
     [ -n "$did" ] || did='-'
@@ -405,13 +445,15 @@ do_start() {
     echo "采样间隔  : ${INTERVAL}s"
     echo "采样器 pid: $pid"
     echo "表头      : $COLS"
+    echo "自停上限  : ${MAX_DURATION}s（0=不限；到点采样器自行收尾并出报告）"
     channel=$(frames_channel)
     case "$channel" in
         app)
-            echo "帧数采集  : app 通道（$SERVER_JAR --cmd 'stats <id>'），每 ${FRAMES_EVERY} 拍取一次"
+            echo "帧数采集  : 快路读心跳（$HB_FILE，≤${HB_MAX_AGE}s）→ 回落 app 通道"
+            echo "            app 通道 = server.jar --connect $SOCKET_NAME --cmd stats <id>，每 ${FRAMES_EVERY} 拍取一次"
             ;;
         python)
-            echo "帧数采集  : python3 直连抽象 socket（org.onmyoji.oas.display）"
+            echo "帧数采集  : 快路读心跳 → 回落 python3 直连抽象 socket（$SOCKET_NAME）"
             ;;
         *)
             echo "帧数采集  : 无可用通路（既没 python3 也没有 server.jar/app_process）→ frames 记 n/a"
@@ -431,9 +473,22 @@ do_loop() {
     out=$1
     csv=$out/samples.csv
     tick=0
+    started=$(date +%s)
     while [ ! -f "$out/STOP" ]; do
         sample_once "$csv" "$tick"
         tick=$((tick + 1))
+        # 硬超时自停：无人值守的长跑必须有尽头（上一轮被「等待被中断」拉成 47.8 小时）
+        if [ "$MAX_DURATION" -gt 0 ]; then
+            now=$(date +%s)
+            if [ $((now - started)) -ge "$MAX_DURATION" ]; then
+                : >"$out/STOP"
+                printf '%s\n' "$MAX_DURATION" >"$out/timeout"
+                echo "$(date '+%F %T') 自停：已到上限 ${MAX_DURATION}s，收尾出报告"
+                # 直接复用 stop：它会落 STOP、杀采样器（就是本进程）、然后出报告落 report.txt
+                OAS_HANG_DIR="$out" sh "$SELF" stop
+                break
+            fi
+        fi
         i=0
         while [ "$i" -lt "$INTERVAL" ]; do
             [ -f "$out/STOP" ] && break
@@ -490,8 +545,15 @@ do_stop() {
     # 无论杀没杀成，pidfile 都清掉：保证重复 stop 幂等，也不给下一轮 start 留陈旧 pid
     rm -f "$out/sampler.pid"
 
-    # ③ 出报告
-    report=$(awk -F'|' -v OUT="$out" -v FRAMES_CH="$(frames_channel)" -v FRAMES_EVERY="$FRAMES_EVERY" '
+    # 出报告
+    # 自停标记：采样器到点把自己停掉时会落 $out/timeout（下一节 do_loop）
+    selftimed='否'
+    if [ -f "$out/timeout" ]; then
+        lim=$(cat "$out/limit" 2>/dev/null)
+        [ -n "$lim" ] || lim='?'
+        selftimed="是（上限 ${lim}s，到点自行收尾）"
+    fi
+    report=$(awk -F'|' -v OUT="$out" -v FRAMES_CH="$(frames_channel)" -v FRAMES_EVERY="$FRAMES_EVERY" -v SELFTIMED="$selftimed" -v HB_FILE_TXT="$HB_FILE" -v HB_MAX_AGE="$HB_MAX_AGE" '
     NR == 1 { next }
     {
         # 列错位自检：正常是 15 列。少/多列说明有字段混进了分隔符竖线，
@@ -576,11 +638,11 @@ do_stop() {
             frtxt = "未采到（原因见下一行「帧数通路」；其它判据照常跑，不静默跳过）"
         }
         if (FRAMES_CH == "none") {
-            chantxt = "无可用通路（无 python3 且缺 server.jar/app_process）→ frames 记 n/a"
+            chantxt = "快路=心跳文件（" HB_FILE_TXT "）；无回落通道（无 python3 且缺 server.jar/app_process）→ 取不到即 n/a"
         } else if (FRAMES_CH == "app") {
-            chantxt = "app 通道：app_process --cmd stats <id>（默认每 " FRAMES_EVERY " 拍取一次）"
+            chantxt = "快路=心跳文件（" HB_FILE_TXT "，≤" HB_MAX_AGE "s）；回落 app 通道 server.jar --connect --cmd stats（每 " FRAMES_EVERY " 拍一次）"
         } else if (FRAMES_CH == "python") {
-            chantxt = "python3 直连抽象 socket org.onmyoji.oas.display"
+            chantxt = "快路=心跳文件；回落 python3 直连抽象 socket"
         } else {
             chantxt = FRAMES_CH
         }
@@ -588,6 +650,7 @@ do_stop() {
         printf "会话目录      : %s\n", OUT
         printf "样本数        : %d\n", n
         printf "时长          : %ds（%d 分 %d 秒）\n", dur, mins, secs
+        printf "自停          : %s\n", SELFTIMED
         printf "采样最大间隔  : %ds（设定以外的空洞都在这里）\n", maxgap + 0
         printf "虚拟屏数量    : %d（末次）｜displayId=%s\n", nd + 0, did
         printf "非 Awake 占比 : %d/%d（%d%%）\n", offn + 0, n, offp
