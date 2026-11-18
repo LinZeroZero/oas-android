@@ -152,7 +152,7 @@
 
 ## 七、新需求立项（P1，先立项再排期）
 
-- [ ] **BG-35 App 内实时预览虚拟屏（in-app live preview）** —— 2026-11-18 立项；**C-2 代码已合并（PR #40 = `a531ba4`），待真机验收**
+- [x] **BG-35 App 内实时预览虚拟屏（in-app live preview）** —— 2026-11-18 立项；**C-2 已结案：代码 PR #40 = `a531ba4` + 缺陷修复 PR #44 = `e8b2a81`，真机四条口径全 PASS（2026-11-18 22:35）**；C-1 / C-3 未开（C-1 押后，见本条末）
   - **来源**：用户 2026-11-18 提供 `https://github.com/Shinarin/ALAS-AOS` + 内嵌虚拟屏截图，明确「这个项目就可以直接在软件里显示虚拟屏」；计划模式拍板口径 **q1=(b)「要 OAS 也能在 App 里内嵌实时预览」**
   - **现状实查（2026-11-18，main = `e4d3e3e`）**：`app/src/main` 全 28 个文件 grep `SurfaceView|TextureView|SurfaceTexture|ImageReader` **命中 0** → App 内**零**预览能力；当前唯一出图路径是 daemon `grab` → raw → 转 PNG（离线单帧，不是实时）
   - **已有基础**：daemon 侧 `ImageReader.newInstance(w,h,RGBA_8888,3)` 早已在跑（`poc/displayserver/.../DisplayEngine.java:100-101`），`grab` 就在读它 → **预览不需要重建捕获通路**，只缺「帧 → App → 显示」这一段
@@ -172,5 +172,7 @@
   - 4-eyes 两轮（D2）：首轮 **CHANGES 4 条阻断** → 修复三笔（`461db0a` 守卫 / `7ed6a2e` 代际+buffer+stride / `3a518c3` 退出不销毁屏）→ 二轮 **PASS**
   - 阻断里有一条**事故级**：`onDispose` 无条件 `releaseAll()` → 用户挂机时点开预览再退出即 destroy 掉挂机屏。已改为「预览只读不建屏，退出只停渲染 + 清临时 raw」
   - 构建证据：`assembleDebug` rc=0；`app-debug.apk` = 48,583,631 B
-  - **未做**：真机验收（四条口径一条未跑）；C-1（flags 重打 jar）、C-3（预览与主屏共存）未开
+  - **真机验收（已跑完）**：2026-11-18 21:08–21:14 首轮 **3 过 1 挂**（口径④「清临时 raw」挂：回显恒 `0`、raw 落成 `preview/preview/` 嵌套）→ PR #44 修复（清目录改 canonical 路径 + `stop()` 先置空再 `join(4500)` 且挪 IO）→ 22:25–22:35 复验**口径④ PASS**：回显「清临时文件 **3 个**」、`cache/preview` 关后 `total 0`（含旧嵌套目录一并清掉）、`oas` 屏 displayId 42 未销毁、daemon 未停。证据 `docs/evidence/20261118-2235-BG-35-c2-recheck.md`
+  - **观测口径修正**：判「屏还在不在」不能直接拿 `dumpsys display | grep -c 'DisplayInfo{"oas"'` 跟 1 比 —— 运行期实测为 **2**（同一屏打印 `mBaseDisplayInfo` + `mOverrideDisplayInfo` 两行），**按 displayId 去重后才是 1**；清场后应为 0
+  - **未开**：C-1（flags 重打 jar，**押后**且必须从头重做 —— 上一棒越线做过已整体回滚，未评审未合并）、C-3（预览与主屏共存，含与 BG-22 `setSurface(null)` 的冲突）
 - 归属：主 AI（立项/排期/验收）→ 写手（实现）→ D（评审）

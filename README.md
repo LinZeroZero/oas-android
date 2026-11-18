@@ -83,8 +83,9 @@ bash tools/build_displayserver.sh                          # 生成虚拟屏 dae
 # 产物：app/build/outputs/apk/debug/app-debug.apk
 ```
 
-> `dist/oas-android-debug.apk` 是最近一次验证过的产物（37,618,831 B），可直接装；
-> `app/build/` 平时保持清理状态，需要新包时再构建（约 50s）。
+> 最近一次实测产物是 `app/build/outputs/apk/debug/app-debug.apk`（**48,584,303 B**，含预览修复）；
+> `dist/` 里只有两个**旧**包（`oas-android-debug.apk` 11-14、`oas-bg22-debug.apk` 11-15，均 48,891,504 B），**不要拿去分发**。
+> APK 体积随构建浮动，**以 `ls -l` 为准**；`app/build/` 平时保持清理状态，需要新包时再构建（约 50s）。
 
 安装：
 

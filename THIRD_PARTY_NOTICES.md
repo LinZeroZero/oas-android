@@ -50,6 +50,9 @@ Apache-2.0 要求：保留版权与许可声明、标明修改。本文件承担
 | [AzurPilot-for-Android](https://github.com/Aliothmoon/AzurPilot-for-Android) | 匿名共享内存帧通道的收益结论（47.2ms → 15.6ms）；防烧屏；渠道 SDK 弹窗抓回 |
 | [MaaAssistantArknights](https://github.com/MaaAssistantArknights/MaaAssistantArknights) | 控制器抽象与任务流水线的概念（该项目为 PC 端工具，无安卓本机后台能力） |
 
+另：BG-35（App 内实时预览）调研参考的 **ALAS-AOS**（AGPL-3.0）同属此类——**仅思路参考、无代码引用**，
+不作为依赖、不复制其任何文件；**AOSP**（Apache-2.0）仅按公开常量语义自行实现，未复制其源码。
+
 ---
 
 ## 4. 运行时依赖（仅列出，未修改）
@@ -58,10 +61,13 @@ Apache-2.0 要求：保留版权与许可声明、标明修改。本文件承担
 |---|---|
 | Chaquopy 17.2.0（嵌入式 CPython 3.13） | MIT（Chaquopy 自身）/ PSF（CPython） |
 | OpenCV 4.13.0（`org.opencv:opencv` AAR） | Apache-2.0 |
-| NumPy | BSD-3-Clause |
-| Pillow | HPND / PIL License |
+| NumPy 1.26.2（`install "numpy==1.26.2"`，钉版本） | BSD-3-Clause |
+| Pillow（`install "pillow"` 未钉版本，由 Chaquopy 预编译轮子决定，构建注释记为 11.0.0） | HPND / PIL License |
 | AndroidX / Material Components | Apache-2.0 |
 | Kotlin / kotlinx | Apache-2.0 |
+
+版本单一来源：`gradle/libs.versions.toml`（AGP 8.13.2 / Kotlin 2.3.10 / Compose BOM 2026.01.01 / Chaquopy 17.2.0 / OpenCV 4.13.0）与
+`app/build.gradle`（Python 3.13、`numpy==1.26.2`、`pillow`）；本表与那两个文件不一致时，以文件为准。
 
 ### 4.1 OpenCV 4.13.0 — Apache License 2.0
 
