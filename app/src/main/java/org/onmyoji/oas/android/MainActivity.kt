@@ -588,25 +588,37 @@ private fun PreviewSection(modifier: Modifier = Modifier) {
         PreviewRenderer(File(context.cacheDir, "preview")).also { r -> r.onStat = { s -> stat = s } }
     }
 
+    /** 清预览自己的临时 raw，并回显当前 oas 屏数量（**只读，不销毁**）。 */
+    fun cleanTempAndReport(): String {
+        val dir = File(context.cacheDir, "preview")
+        var removed = 0
+        runCatching { dir.listFiles()?.forEach { f -> if (f.isFile && f.delete()) removed++ } }
+        val ids = PreviewSession.oasDisplayIds()
+        return "预览已停：清临时文件 $removed 个；oas 屏仍 ${ids.size} 块（未销毁" +
+            (if (ids.isEmpty()) "" else "：" + ids.joinToString(",")) + "）"
+    }
+
+    /**
+     * 停止预览。**不 destroy 任何屏**：预览自己不建屏（只 grab 抓现有的 oas 屏），
+     * 那块屏很可能是用户手动建来挂机的，销毁它就是事故（口径④容易被误读为「必须销毁」）。
+     */
     fun stopAndRelease() {
         renderer.stop()
         scope.launch {
-            val msg = withContext(Dispatchers.IO) {
-                runCatching { PreviewSession.releaseAll().summary() }
-                    .getOrElse { "释放失败: ${it.message ?: it}" }
+            releaseText = withContext(Dispatchers.IO) {
+                runCatching { cleanTempAndReport() }.getOrElse { "停止时出错: ${it.message ?: it}" }
             }
-            releaseText = msg
         }
     }
 
-    // 离开界面（返回/退出 App）：只有本次预览曾开过才释放，绝不动用户手动建来挂机的 oas 屏
+    // 离开界面（返回/退出 App）：同样只停线程 + 清临时文件，绝不 destroy 用户挂机用的 oas 屏
     DisposableEffect(Unit) {
         onDispose {
-            if (!everStarted.value) return@onDispose
             renderer.stop()
+            if (!everStarted.value) return@onDispose
             // onDispose 里的 scope 已不可用，用独立的 IO 协程收尾
             CoroutineScope(Dispatchers.IO).launch {
-                runCatching { PreviewSession.releaseAll() }
+                runCatching { cleanTempAndReport() }
             }
         }
     }
