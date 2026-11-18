@@ -18,6 +18,10 @@
 - daemon `--cmd <line>` / `--wait <ms>`：一次性执行 socket 命令后退出（不 bind、不常驻），不装 APK 也能验 daemon 行为
 - `docs/evidence/` 开始留痕：首批真机证据见 `20261114-2330-BG-19-daemon-kb-run.md`
 - `docs/handoff/` 交接包目录：七要素模板 + 两条合格判据，写手换棒的第一动作是读交接包并执行 §7「启动动作」
+- **BG-35 App 内实时预览 `oas` 虚拟屏（C-2，PR #40 / #44）**：预览**默认关**、手动点开，App 内 5 fps 量级回显虚拟屏画面；退出预览即清临时文件、**不销毁**虚拟屏；`server.jar` 全程未重打（29,253 B）。四条验收口径真机全 PASS
+- **长时挂机检测工具 `tools/hang_check.sh` 真通路（PR #29 / #30 / #31）**：`--connect` 连真 daemon 读运行态 `frames`、心跳文件快路、socket 2 s 口径、`OAS_MAX_DURATION` 硬超时自停
+- **外置状态三件套 `AGENTS.md` / `PROGRESS.md` / `DECISIONS.md`（PR #42 / #43）**：规矩 / 位置 / 决定分文件，并接入门禁第⑥项（改 `app/` 或 `poc/` 必须同时更新 `PROGRESS.md`）与第⑦项（状态文件行数上限）
+- **BG-34 虚拟屏不可触证据 + BG-33 调研处置口径（PR #36）**；**BG-35 立项调研 `docs/research/`（PR #37，含 ALAS-AOS / AOSP 对照）**
 
 ### Changed
 - wake lock 实现由 `PowerManager` 改为内核 sysfs（`app_process` 下 `getSystemContext()` 为 null，`getSystemService` 必然 NPE）
@@ -26,10 +30,15 @@
 - BG-21 改为**预实验（pilot）→ 正式测**两段式：先验证「能不能观测到整机 suspend」，再谈 60s 心跳是否停跳
 - `docs/WORKFLOW.md §1` 记录已知限制：**会话分组无法由 AI 设定**，直改 Room 库会被 App 运行时写回（杀进程无效），故用 `OAS-` 标题前缀识别接力会话
 - docs: 交接包目录只保留最新一份，`docs/handoff/archive/` 已清空（旧包不再归档，历史见 `git log`）；`CHANGELOG.md` 维护权归属「文档 C」
+- BG-35 验收口径④由「退出预览即销毁虚拟屏」改为「**退出预览只清临时文件、不销毁虚拟屏**」（PR #41，避免每次开关预览重建屏）
+- 长时挂机检测不再用 `--cmd` 假通路，改 `--connect` 连运行中的 daemon；`frames` 取不到即视为通道问题而非画面问题
+- 交接包制度落地：主 AI / E / D / 写手四类棒包各自「只留最新一份」，换棒由交接包位执笔、主 AI 只验收与留指针（PR #32 / #33 / #34 / #35 / #38 / #39 / #45）
 
 ### Fixed
 - `--wait` 由固定 sleep 改为轮询 `kb status`；段窗口用前一个心跳 `ts` 衔接，段首空洞不再被低估
 - 文档与实现不一致：ADR-0001 §Decision 第 2 条与 `docs/HANDOFF.md`/`docs/WORKFLOW.md` 的 tag 名同步为当前实现与 `v0.2.0-b1`
+- 预览退出后临时文件清不掉、且落点错成 `preview/preview` 目录（PR #44，真机验收发现）：现退出即清空 `cache/preview`，回显「清临时文件 N 个」
+- 心跳快路的 13 位毫秒进 mksh 32 位 `$(( ))` 被截成负数，导致快路恒不命中（PR #31）：改按字符串取前 10 位得秒
 
 ## [0.2.0-b1] - 2026-11-14
 
