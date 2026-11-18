@@ -5,14 +5,14 @@
 ## 当前
 - `main` = **最新合并提交**（要具体 sha 就 `git log --oneline -1`；本文件不记，见 `DECISIONS.md` D-013）；本地与远端都只剩 `main`；`git status` 干净
 - `server.jar` = **29,253 B**（未重打）
-- 最近合并：**PR #43** 瘦身纪律 + gate 第⑦项；**PR #42** 状态三件套 + gate 第⑥项；**PR #41** 口径④修正；**PR #40** C-2 App 内实时预览
-- 可分发 APK（C-2 那次编译）：`app/build/outputs/apk/debug/app-debug.apk` = **48,583,631 B**；`dist/` 里两个包是旧的，未更新
+- 最近合并：**PR #44** 预览临时 raw 清理修复（真机验收发现）；**PR #43** 瘦身纪律 + gate 第⑦项；**PR #42** 状态三件套 + gate 第⑥项；**PR #41** 口径④修正；**PR #40** C-2 实时预览
+- 可分发 APK（PR #44 那次编译）：`app/build/outputs/apk/debug/app-debug.apk` = **48,584,270 B**；`dist/` 里两个包是旧的，未更新
 
 ## 在飞
-- `fix/preview-temp-cleanup`（未合并）：修「预览 raw 落成 `cache/preview/preview/` 且退出清不掉」——真机验收发现的缺陷
+- **无**。PR #44 合并后分支即删；下一个 PR 是 `docs/records-closeout`（下一条第 3 项）
 
 ## 下一步（按序做）
-1. **BG-35 C-2 复验（小）**：真机验收 2026-11-18 21:08–21:14 已跑（3 过 1 挂，缺陷见「在飞」）；`fix/preview-temp-cleanup` 合并后装新包，只需再点一次开关、看回显从「清临时文件 0 个」变成删到真数，1 分钟级
+1. **BG-35 C-2 复验（小）**：真机验收 2026-11-18 21:08–21:14 已跑（抓帧 369/丢帧 51/grab 12ms，3 过 1 挂）；PR #44 已修缺陷，装新包只需再点一次开关，看回显从「清临时文件 0 个」变成删到真数（1 分钟级）
 2. **BG-32 P0-A** 14 分钟真熄屏长跑（游戏 27.7MB 资源已更新，工具链两轮冒烟已过），等约时点
 3. **记录收口**：Q5 结论 + BG-34 定责重写落 `docs/research/`；C1 的 `CHANGELOG`/`README`/`THIRD_PARTY_NOTICES` 欠账一次写完
 
