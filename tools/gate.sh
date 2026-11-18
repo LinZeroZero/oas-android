@@ -7,7 +7,8 @@
 #                                 # 只跑 bash -n tools/*.sh + ⑤硬约束/AGP
 #
 # 末行固定输出 `GATE: PASS` 或 `GATE: FAIL <项名>`，便于直接当提交前的判据。
-# 每项固定打印一行 `[n/5] OK|SKIP|FAIL ...`。
+# 每项固定打印一行 `[n/6] OK|SKIP|FAIL ...`。
+# ⑥ 状态同步：改了 app/ 或 poc/ 必须同时改 PROGRESS.md（规矩见 AGENTS.md）。
 #
 # 注意：故意不用 `set -e` —— 一项失败也要把后面几项的结论打出来，
 #       否则「fail 在一半就退出」会让人误以为其他项是通过的。
@@ -68,16 +69,16 @@ JAVA_SUM=$(find poc/displayserver/src -name '*.java' -print0 2>/dev/null |
     sort -z | xargs -0 cat 2>/dev/null | md5sum | cut -d' ' -f1)
 
 if [ "$STATIC" = "1" ]; then
-    echo "[1/5] SKIP  --static（云端无 Android SDK）"
+    echo "[1/6] SKIP  --static（云端无 Android SDK）"
 else
     if [ -f "$STAMP" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$JAVA_SUM" ] && [ -f "$JAR" ]; then
-        echo "[1/5] SKIP  java 未变化（server.jar $(stat -c%s "$JAR" 2>/dev/null) B）"
+        echo "[1/6] SKIP  java 未变化（server.jar $(stat -c%s "$JAR" 2>/dev/null) B）"
     else
         if bash tools/build_displayserver.sh >poc/displayserver/build/gate-build.log 2>&1; then
             printf '%s\n' "$JAVA_SUM" >"$STAMP"
-            echo "[1/5] OK    server.jar $(stat -c%s "$JAR" 2>/dev/null) B"
+            echo "[1/6] OK    server.jar $(stat -c%s "$JAR" 2>/dev/null) B"
         else
-            echo "[1/5] FAIL  build_displayserver（见 poc/displayserver/build/gate-build.log）"
+            echo "[1/6] FAIL  build_displayserver（见 poc/displayserver/build/gate-build.log）"
             fail "daemon-build"
         fi
     fi
@@ -87,16 +88,16 @@ fi
 # ② assembleDebug（必须用 ./gradlew；PATH 上的 gradle 4.31 会报 Task not found）
 # ---------------------------------------------------------------- #
 if [ "$STATIC" = "1" ]; then
-    echo "[2/5] SKIP  --static（云端无 Android SDK）"
+    echo "[2/6] SKIP  --static（云端无 Android SDK）"
 elif ./gradlew :app:assembleDebug >build/gate-gradle.log 2>&1; then
     if [ -f "$APK" ]; then
-        echo "[2/5] OK    APK md5 $(md5sum "$APK" | cut -d' ' -f1) / $(stat -c%s "$APK") B"
+        echo "[2/6] OK    APK md5 $(md5sum "$APK" | cut -d' ' -f1) / $(stat -c%s "$APK") B"
     else
-        echo "[2/5] FAIL  BUILD 通过但找不到 $APK"
+        echo "[2/6] FAIL  BUILD 通过但找不到 $APK"
         fail "apk-missing"
     fi
 else
-    echo "[2/5] FAIL  assembleDebug（见 build/gate-gradle.log）"
+    echo "[2/6] FAIL  assembleDebug（见 build/gate-gradle.log）"
     fail "assembleDebug"
 fi
 
@@ -131,13 +132,13 @@ if [ "$DEVICE" = "1" ]; then
         fi
     done
     if [ "$CV_OK" = "1" ]; then
-        echo "[3/5] OK    cv_selftest ${PASSED:-0}/${TOTAL:-0}"
+        echo "[3/6] OK    cv_selftest ${PASSED:-0}/${TOTAL:-0}"
     else
-        echo "[3/5] FAIL  cv_selftest ${PASSED:-0}/${TOTAL:-0}（见 $CACHE_DEVICE/cv_selftest.txt）"
+        echo "[3/6] FAIL  cv_selftest ${PASSED:-0}/${TOTAL:-0}（见 $CACHE_DEVICE/cv_selftest.txt）"
         fail "cv_selftest"
     fi
 else
-    echo "[3/5] SKIP  未加 --device"
+    echo "[3/6] SKIP  未加 --device"
 fi
 
 # ---------------------------------------------------------------- #
@@ -168,17 +169,17 @@ if [ "$DEVICE" = "1" ]; then
     SCORE=$(printf '%s' "$REPORT" | grep -oE '通过 [0-9]+/[0-9]+' | head -1 | tr -d ' ')
     HOLE=$(printf '%s' "$REPORT" | grep -oE '空洞 [0-9]+ms' | grep -oE '[0-9]+' | sort -rn | head -1)
     if [ "$DONE" != "1" ]; then
-        echo "[4/5] FAIL  四段报告 ${KEEPALIVE_TIMEOUT}s 内未定稿（${SCORE:-无报告}，末态 $WAITED s）"
+        echo "[4/6] FAIL  四段报告 ${KEEPALIVE_TIMEOUT}s 内未定稿（${SCORE:-无报告}，末态 $WAITED s）"
         fail "keepalive-timeout"
     elif [ "$SCORE" = "通过4/4" ] && [ -n "${HOLE:-}" ] && [ "${HOLE:-0}" -lt 5000 ]; then
-        echo "[4/5] OK    四段 4/4，C 段最大空洞 ${HOLE}ms"
+        echo "[4/6] OK    四段 4/4，C 段最大空洞 ${HOLE}ms"
     else
-        echo "[4/5] FAIL  四段 ${SCORE:-无报告}，C 段最大空洞 ${HOLE:-n/a}ms"
+        echo "[4/6] FAIL  四段 ${SCORE:-无报告}，C 段最大空洞 ${HOLE:-n/a}ms"
         fail "keepalive-4of4"
     fi
     root_shell "am force-stop $PKG"
 else
-    echo "[4/5] SKIP  未加 --device"
+    echo "[4/6] SKIP  未加 --device"
 fi
 
 # ---------------------------------------------------------------- #
@@ -291,13 +292,42 @@ GRADLE_WRAPPER=$(grep -E '^distributionUrl=' gradle/wrapper/gradle-wrapper.prope
     grep -oE 'gradle-[0-9.]+' | head -1)
 
 if [ -n "$HITS" ]; then
-    echo "[5/5] FAIL  硬约束命中：$HITS"
+    echo "[5/6] FAIL  硬约束命中：$HITS"
     fail "hard-constraints"
 elif [ "$AGP" != "8.13.2" ]; then
-    echo "[5/5] FAIL  AGP 版本是 ${AGP:-未知}，必须是 8.13.2（9.x 会让 Chaquopy 静默失效）"
+    echo "[5/6] FAIL  AGP 版本是 ${AGP:-未知}，必须是 8.13.2（9.x 会让 Chaquopy 静默失效）"
     fail "agp-version"
 else
-    echo "[5/5] OK    无禁用符号，AGP $AGP / $GRADLE_WRAPPER"
+    echo "[5/6] OK    无禁用符号，AGP $AGP / $GRADLE_WRAPPER"
+fi
+
+# ⑥ 状态同步门禁（规矩见 AGENTS.md：改了 app/ 或 poc/ 必须同时改 PROGRESS.md）
+# diff 范围：origin/main...HEAD 优先；没有 origin/main（浅克隆/新仓）退 HEAD~1..HEAD；
+# 两者都没有就 SKIP —— 门禁自己绝不允许把 CI 搞红。
+if [ "${OAS_SKIP_PROGRESS_CHECK:-0}" = "1" ]; then
+    echo "[6/6] SKIP  OAS_SKIP_PROGRESS_CHECK=1"
+else
+    RANGE=""
+    if git rev-parse --verify -q origin/main >/dev/null 2>&1; then
+        RANGE="origin/main...HEAD"
+    elif git rev-parse --verify -q HEAD~1 >/dev/null 2>&1; then
+        RANGE="HEAD~1..HEAD"
+    fi
+    if [ -z "$RANGE" ]; then
+        echo "[6/6] SKIP  无可用 diff"
+    else
+        CHANGED=$(git diff --name-only "$RANGE" 2>/dev/null)
+        if printf '%s\n' "$CHANGED" | grep -qE '^(app|poc)/'; then
+            if printf '%s\n' "$CHANGED" | grep -qx 'PROGRESS.md'; then
+                echo "[6/6] OK    代码有改动，PROGRESS.md 已同步"
+            else
+                echo "[6/6] FAIL  改了 app/ 或 poc/ 但没改 PROGRESS.md（规矩见 AGENTS.md）"
+                fail "progress-not-updated"
+            fi
+        else
+            echo "[6/6] OK    无 app/ 或 poc/ 改动（不需要更新 PROGRESS.md）"
+        fi
+    fi
 fi
 
 # ---------------------------------------------------------------- #
