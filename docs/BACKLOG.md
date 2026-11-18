@@ -114,8 +114,8 @@
   - 现状处置（用户决策 2026-11-15）：**不追分组**，靠 `OAS-<角色><序号> <任务>` 标题前缀识别接力会话；需归组时由用户手动移动
   - 归属：工具侧限制（非本项目代码问题）；若 Operit 后续提供设置分组的 API，再回来关掉这条
 
-- [ ] **BG-32 长时挂机没有可复现的检测手段**（工具已交付并评审通过，真机长跑待做）
-  - 交付：`tools/hang_check.sh`（542 行，写手 A5 实现；D 独立评审 **PASS with nits**，2026-11-15）
+- [ ] **BG-32 长时挂机没有可复现的检测手段**（工具链路已真机验证，**正式 14 分钟真熄屏长跑待约时点**）
+  - 交付：`tools/hang_check.sh`（现 776 行，写手 A5 实现；D 三轮 4-eyes 均 PASS，最新 2026-11-17 `20fa1a1`）
   - 形态：Android root shell（toybox `sh`），`start` / `status` / `stop` / `help`；只读 `/proc`、`/sys/power/wake_lock`、`dumpsys`；不改系统设置、不装应用、不注册自启动；自己不建屏、不拉游戏
   - 每拍 15 列（`|` 分隔）：`ts|awake|ndisp|did|dpid|djiff|gpid|gjiff|sfjiff|wl|load1|memfree|frames|dstate|gstate`
   - 判定：样本<3 或 <60s → 「样本太短」；daemon/游戏 有样本 pid=0 → FAIL；虚拟屏=0 → FAIL；`D`/`T` 状态样本 ≥25% → FAIL（疑似 cgroup freezer 冻住）；帧数采到但无增长 → FAIL；CSV 列错位 → FAIL；否则 PASS（CPU 全无增长记 WARN）
@@ -123,4 +123,11 @@
   - 已验证：阴性对照（无 daemon/游戏/虚拟屏 → FAIL 且逐项点名）、陈旧 pidfile 不误杀（`sleep 300` 存活）、重复 stop 幂等、`sh -n`/`bash -n` 通过
   - **已知限制**（不阻塞，来自 D 的 nits）：① 游戏若跑在分身子进程（`pkg:xxx`），`pidof` 精确名取不到 → 会以 FAIL 形式暴露（不是假 PASS），必要时加 `ps` 前缀兜底；② 若将来 daemon 改用 `--nice-name`，cmdline 会被改写成单一名字 → 身份校验全部失败、全样本判 FAIL；③ 小时级真实长跑的 PASS 路径尚未跑过
   - 用法：`su -c 'sh tools/hang_check.sh start'` → 锁屏挂机 → `su -c 'sh tools/hang_check.sh stop'`
+  - **2026-11-17 增量（PR #29 / #30 / #31，main = `20fa1a1`）**：
+    - **frames 真通路**：`--cmd` 是假通路（本进程 `new SocketServer` 就地 dispatch，`DisplayEngine` 空表 → 恒回 `no such display`，上一轮 47.8h 长跑 819 次 100% `n/a` 的真因）→ 新增 `--connect <抽象名>`（`LocalSocket` ABSTRACT）；socket 超时统一 **2000ms**（对齐 `DisplayServer.rawCommand(cmd,2000)`，且必须 < 5s 采样间隔）
+    - **心跳快路**：读 daemon 写的 `keepalive_hb.jsonl`（末行 `ts`≤5s 且 `displayId`、`pid` 与当前 daemon 一致才采信），否则回落 `--connect`
+    - **硬超时自停** `OAS_MAX_DURATION`（默认 900s，0=不限）+ `OAS_SELF_STOP=1` 让 `do_stop` 跳过 kill 段（防自停杀父进程、留半行 CSV → `badcols` 假 FAIL）
+    - **真机坑（已修）**：Android `/system/bin/sh` 是 mksh，**算术 32 位**；`hts/1000`（13 位 ms）先被截成负数，`age≈1.79e9`，快路恒不命中。改为 `${#hts}` 校 13 位 + `hsec=${hts%???}` 字符串截秒 —— 以后任何 13 位毫秒都不能进 `$(( ))`
+    - **已验证（亮屏不熄屏冒烟，两轮）**：① 3 分钟轮 `frames 505→5289` 递增但**快路 0 命中**（正是它暴露了 32 位问题）；② 90s 轮 `frames 355→2474`、**每个采样拍都出数**（快路生效，节流仅 3 拍）；两轮自停都正常、CSV 恒 15 列。证据 `docs/evidence/20261117-2339-BG-32-frames-smoke.md`、`docs/evidence/20261117-2344-BG-32-hbframes-smoke.md`
+    - **仍待**：正式 14 分钟真熄屏长跑（A 前台 120s + B 回桌面 60s + C 熄屏 600s + D 唤醒点击 15s）= PASS 路径唯一验收口径；「首拍 pid=0 即 FAIL」是否放宽为前置启动期豁免，等长跑数据再定（不提前动判据）
   - 归属：A5（代码）/ D（评审）/ 主 AI（签发）/ 用户（真机长跑配合）

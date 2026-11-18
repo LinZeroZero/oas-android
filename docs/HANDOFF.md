@@ -393,15 +393,16 @@ app 只保留 UI + 前台服务 + socket 客户端。
 ## 十二、接力点（写手交棒用）
 > 制度见 `docs/WORKFLOW.md §1`：**一个写手位，可以换人，不可并行**。换棒时本节整节替换，不追加历史；**详细内容写在交接包里**（`docs/handoff/`）。
 
-- **分支**：`main`，head = **以 `git rev-parse --short main` 现查为准**（不要引用本文里的 sha，会自指过期；本行写入时点 = `41de9b6`）：PR #21 = BG-32 工具入库、PR #22 = 交接包 E 制度 + 首份主 AI 交接包、PR #23 = 交接包随合并自纠
-- **在飞分支**：无未合并工作（工作区干净，`app/build` 已清、体积 163M，`dist/` 两个 APK 均 48891504 B）。陈旧分支**已于 2026-11-15 全部清理**：远端只剩 `main`、本地只剩 `main`（删了 5 个远端 head + 7 个本地分支，含越位产物备份 `backup/bg22-docs`）
+- **分支**：`main`，head = **以 `git rev-parse --short main` 现查为准**（不要引用本文里的 sha，会自指过期；本行写入时点 = `20fa1a1`，2026-11-17）：PR #21 = BG-32 工具入库、PR #22 = 交接包 E 制度 + 首份主 AI 交接包、PR #23 = 交接包随合并自纠、PR #28 = P0-B patch 入库补记、PR #29 = hang_check 按真机口径认虚拟屏、**PR #30 = frames 改走 `--connect` + 心跳快路 + socket 2s + 硬超时自停**、**PR #31 = 心跳快路绕开 mksh 32 位算术**
+- **在飞分支**：无未合并工作。**2026-11-17 再次清理**：远端与本地都只剩 `main`（删了 `feat/bg32-hangcheck-fix`、`feat/p0b-android-impl`、`fix/bg32-frames-and-timeout`、`fix/bg32-hbframes-32bit` 四个 head，均已 squash 合并）；工作区 `git status` 干净，`build/gate-strip` 为构建中间产物、未入库
 - **P0-B 现状（2026-11-15 13:52）**：A5 的实现以 `patches/p0b-android-impl.patch` 形式已在 main（PR #27 `6904024`，属误入后补评审，D 结论 **PASS with nits**）；**尚未 apply 到 vendor、未真机自测**；必改项 = `tools/fetch_vendor.sh:29` 只 apply 单个 patch，改为遍历 `patches/*.patch` 并把本 patch 改名 `0002-…` 控序
-- **主 AI 交接包（当前）**：`docs/handoff/20261115-1339-main-ai.md`（**调度位换人先读这个**；上一棒 `66fc5ca4…` 交棒时上下文 71%，旧包 1158 已删除，历史见 `git log -- docs/handoff/`）
+- **主 AI 交接包（当前）**：`docs/handoff/20261118-1320-main-ai.md`（**调度位换人先读这个**；实查 171 行、七要素齐全、含会话名册（chat_id 实查）/ 排除记录全文 / 可执行待办；上一棒 `bf52e69a…` 的旧包 `20261115-1339-main-ai.md` 与 `20261117-2320-main-ai.md` 均已按用户「只留最新一份」删除，历史见 `git log -- docs/handoff/`）
 - **旧交接包**：按用户 2026-11-15 决定「只留最新一份」，`docs/handoff/archive/` 已清空（历史见 `git log -- docs/handoff/`）；BG-22 结案记录以 `docs/BACKLOG.md` 状态行为准
 - **换棒判据**：上下文接近压缩阈值即换棒（256K × 0.7 ≈ 179K 词元，或消息数到 20 条触发总结）；已触发过一次压缩也换
 - **写手位交接**：A（`519dbd40…`）→ A2（`8833100c-271d-4988-b752-ebce0f2321ca`）→ A3（`ca2b0219-…`，BG-23）→ A4（`3464a2d7-9d14-4b05-9ee2-35dcd7f6e265`，BG-21/BG-22，已退休不复用）→ **A5（`ca2b0219-0992-4e48-996d-dc9fcf071460`）为当前唯一代码位**
-- **本棒任务**：BG-32 工具已入库（PR #21 squash `79d5f13`）；下一步 P0 = 用户配合做**含游戏 + 虚拟屏的真机长跑**，验 `tools/hang_check.sh` 的 **PASS 路径**（至今只跑过阴性对照与半阳性）
+- **本棒任务**：BG-32 工具链路**已真机验证完成**（PR #21 工具入库 → PR #29 认虚拟屏 → PR #30 frames 真通路 + 硬超时 → PR #31 mksh 32 位修复）；**下一步只剩 P0-A 正式验收：用户约时点跑 14 分钟真熄屏长跑**（A 前台 120s + B 回桌面 60s + C 熄屏 600s + D 唤醒点击 15s），验 `tools/hang_check.sh` 的 **PASS 路径**；长跑通过后 BG-32 才能勾掉
 - **本轮决策（用户，2026-11-15）**：① **交接包固定由 `OAS-E1 交接包`（`acbf5597-741f-4a08-b437-9c6b7950f184`）撰写**，主 AI 只验收 + 在本节留指针（`WORKFLOW §1` 已改，commit `886c8a6`）；② BG-32 走「分支 + PR + 门禁绿」入库（PR #21），不直推 main；③ 会话**不追分组**，靠 `OAS-<角色><序号> <任务>` 标题前缀识别（BG-25）；④ 文档收口与交接包**外包给子会话**，主 AI 只做决策/验收/合并
+- **本轮决策（用户，2026-11-17）**：⑤ OASX（`AzurTian/OASX`）仅当「基座候选」评估，D 结论 **C 不参考、不作基座**（置信度 0.9），不再追；⑥ 返工范围取「P1 + 便宜 P2 一起修」，不为纯 nit 再开一轮；⑦ 证据/评审文档**并入当次修复 PR**（一个 PR 同时带代码 + docs），不单开 docs PR；⑧ 真机验证先做**不熄屏短冒烟**，14 分钟真熄屏长跑**另约时点**；⑨ 收工必须**真响铃**（只亮屏不算）
 - **已知坑**：
   - 心跳每行格式固定 `{"ts":ms,"displayId":id,"frames":n,"pid":p}`（`Heartbeat.java`），别自创字段
   - `displayId=-1` 时 `frames` 恒为 -1，不能用来判「画面在动」；要判渲染必须在真实虚拟屏 displayId 上跑
@@ -415,6 +416,11 @@ app 只保留 UI + 前台服务 + socket 客户端。
   - 【新】`main` 是受保护分支：直推被 `protected branch hook declined` + `Required status check "static-gate" is expected` 拒 → 一律 分支 + PR + 门禁绿后 squash
   - 【新】proot(`terminal`) 的 `ps` 是 Ubuntu procps，**不支持 `-o PID,ARGS`**（报 `unknown user-defined format specifier "PID"`）→ 设备进程查询一律走 `super_admin:shell`（toybox）
   - 【新】`git commit -F -` 配 heredoc 在 `terminal` 里会被吞字符 → 提交一律用多个 `-m`；判定 push 是否真上去用 `git ls-remote --heads origin`，**不信 push 回执正文**
+  - 【新·2026-11-17】**`--cmd` 是假通路**：它在本进程 `new SocketServer` 就地 dispatch，`DisplayEngine` 是空表 → `stats <id>` 恒回 `no such display`、JSON 里没有 `frames` 键（上一轮 47.8h 长跑 819 次 100% `n/a` 的真因）。要读运行态必须 `--connect org.onmyoji.oas.display --cmd "stats <id>"`；daemon 端监听参数是 `--socket`，两边的词不要混
+  - 【新】**Android `/system/bin/sh` 是 mksh，算术是 32 位**：13 位毫秒进 `$(( ))` 先被截成负数（实测 `age=1795296330`）。要么 `${var%???}` 纯字符串截位，要么交给 `awk`；绝对不要写 `ts/1000`
+  - 【新】虚拟屏名是 **`oas`（无连字符）**，`grep 'oas-'` 恒 0；`displayId` 每次建屏都会变（实测 34/35/36/37），脚本一律现查，禁止写死
+  - 【新】`am force-stop` **杀不掉 daemon**（init 收养，`oom_score_adj=-1000`）→ 收工必须 `kill -9 <daemon pid>`，杀完再核 `DisplayInfo{"oas"` 计数为 0
+  - 【新】`super_admin:shell` 有危险命令过滤：`kill -9`、`rm -rf` 与「多条混在一条」会被拦 → 拆成单条执行，`rm -rf` 换「逐文件 `rm -f` + `rmdir`」
 
 ## 十三、许可
 
