@@ -23,7 +23,7 @@ import java.io.File
  * 节奏：默认 [FPS] 拍/秒（可调常量，主 AI 口径 5~6）；只取最新帧、不排队 —— 每拍完成后再排下一拍，
  * 单拍超时就自然降频，绝不堆积任务。抓帧走片① 的 [PreviewFrameSource]（daemon `grab`，不动 jar）。
  */
-class PreviewRenderer(private val cacheDir: File) : SurfaceHolder.Callback {
+class PreviewRenderer(private val previewDir: File) : SurfaceHolder.Callback {
 
     companion object {
         /** 预览帧率；5~6 是主 AI 给的口径，调这里即可，不要散落魔数。 */
@@ -63,7 +63,8 @@ class PreviewRenderer(private val cacheDir: File) : SurfaceHolder.Callback {
     @Volatile
     private var generation = 0
     private var bitmap: Bitmap? = null
-    private val frameDir = File(cacheDir, "preview")
+    /** 预览临时目录（**唯一来源**）：调用方传进来的就是预览目录本身，这里绝不再拼一层 "preview"。 */
+    val frameDir: File = previewDir
     private var grabs = 0L
     private var drops = 0L
     private var lastLatchAt = 0L

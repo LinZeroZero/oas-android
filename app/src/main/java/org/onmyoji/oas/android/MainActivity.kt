@@ -588,11 +588,29 @@ private fun PreviewSection(modifier: Modifier = Modifier) {
         PreviewRenderer(File(context.cacheDir, "preview")).also { r -> r.onStat = { s -> stat = s } }
     }
 
-    /** 清预览自己的临时 raw，并回显当前 oas 屏数量（**只读，不销毁**）。 */
+    /**
+     * 清预览自己的临时 raw，并回显当前 oas 屏数量（**只读，不销毁**）。
+     * 目录以 [PreviewRenderer.frameDir] 为准（唯一来源），并**递归**删：旧版本曾把 raw 落在
+     * `cache/preview/preview/` 这层嵌套目录里，只列一层 + 只删文件会永远清不掉。
+     */
     fun cleanTempAndReport(): String {
-        val dir = File(context.cacheDir, "preview")
+        val dir = renderer.frameDir
+        val cacheRoot = context.cacheDir.absolutePath
         var removed = 0
-        runCatching { dir.listFiles()?.forEach { f -> if (f.isFile && f.delete()) removed++ } }
+        fun wipe(d: File) {
+            d.listFiles()?.forEach { f ->
+                if (f.isDirectory) {
+                    wipe(f)
+                    if (f.delete()) removed++
+                } else if (f.delete()) {
+                    removed++
+                }
+            }
+        }
+        runCatching {
+            // 双保险：只在 app cache 目录内操作，绝不越界删别处
+            if (dir.absolutePath.startsWith(cacheRoot)) wipe(dir)
+        }
         val ids = PreviewSession.oasDisplayIds()
         return "预览已停：清临时文件 $removed 个；oas 屏仍 ${ids.size} 块（未销毁" +
             (if (ids.isEmpty()) "" else "：" + ids.joinToString(",")) + "）"
