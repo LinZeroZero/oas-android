@@ -1,0 +1,222 @@
+package org.onmyoji.oas.android.preview
+
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
+import android.os.Handler
+import android.os.HandlerThread
+import android.os.Looper
+import android.view.SurfaceHolder
+import java.io.File
+
+/**
+ * BG-35 C-2 · 片②：预览渲染线程（**不含 UI 开关**，开关/释放由片③接）。
+ *
+ * 三条硬要求（主 AI 口径）：
+ * 1. 独立 [HandlerThread] 抓帧+解码+贴图，**不占主线程**；
+ * 2. [Bitmap] **只创建一次**反复复用，显示缩放靠 `drawBitmap(src, srcRect, dstRect, paint)` 的
+ *    dst 矩形完成 —— **每帧不调 `createScaledBitmap`**（那会每帧新建一张 Bitmap，GC 抖动直接压主屏）；
+ * 3. `lockCanvas()` 返回 null（surface 未就绪/已销毁）时**丢弃本帧**，不空指针、不阻塞线程。
+ *
+ * 节奏：默认 [FPS] 拍/秒（可调常量，主 AI 口径 5~6）；只取最新帧、不排队 —— 每拍完成后再排下一拍，
+ * 单拍超时就自然降频，绝不堆积任务。抓帧走片① 的 [PreviewFrameSource]（daemon `grab`，不动 jar）。
+ */
+class PreviewRenderer(private val cacheDir: File) : SurfaceHolder.Callback {
+
+    companion object {
+        /** 预览帧率；5~6 是主 AI 给的口径，调这里即可，不要散落魔数。 */
+        const val FPS = 5
+
+        /** 捕获侧固定尺寸（画布硬约束 1280×720，不改分辨率/dpi）。 */
+        const val CAPTURE_W = 1280
+        const val CAPTURE_H = 720
+    }
+
+    /** 一拍的统计，供片③/④ 显示与自测记录。回调在主线程。 */
+    data class Stat(
+        val running: Boolean,
+        val grabs: Long,
+        val drops: Long,
+        val lastGrabMs: Double,
+        val daemonFrames: Long,
+        val drawMs: Long,
+        val note: String,
+    )
+
+    var onStat: ((Stat) -> Unit)? = null
+
+    private val main = Handler(Looper.getMainLooper())
+    private var thread: HandlerThread? = null
+    private var handler: Handler? = null
+    private var holder: SurfaceHolder? = null
+
+    @Volatile
+    private var running = false
+    private var bitmap: Bitmap? = null
+    private val frameDir = File(cacheDir, "preview")
+    private var grabs = 0L
+    private var drops = 0L
+    private var lastLatchAt = 0L
+    private var lastGrabMs = -1.0
+    private var daemonFrames = -1L
+    private var drawMs = 0L
+    private var note = "未开始"
+
+    fun bind(holder: SurfaceHolder) {
+        this.holder = holder
+        holder.addCallback(this)
+    }
+
+    fun isRunning(): Boolean = running
+
+    /** 手动开：起渲染线程并开始抓帧（默认关，只有用户点开才走这里）。 */
+    fun start() {
+        if (running) return
+        running = true
+        lastLatchAt = System.currentTimeMillis()
+        val t = HandlerThread("oas-preview").also { it.start() }
+        thread = t
+        handler = Handler(t.looper)
+        handler?.post(tick)
+        publish("抓帧中")
+    }
+
+    /** 停：不再排下一拍、等本拍收尾后退出线程；**不销毁虚拟屏**（那属于退出预览的整体释放）。 */
+    fun stop() {
+        if (!running && thread == null) return
+        running = false
+        handler?.removeCallbacksAndMessages(null)
+        thread?.quitSafely()
+        thread = null
+        handler = null
+        publish("已停止")
+    }
+
+    private val tick = object : Runnable {
+        override fun run() {
+            if (!running) return
+            val started = System.currentTimeMillis()
+            val h = holder
+            if (h == null || !h.surface.isValid) {
+                // surface 还没准备好：不抓帧（省 IO），下一拍再看
+                note = "surface 未就绪"
+                drops++
+                publishLater(started)
+                return
+            }
+            val bmp = ensureBitmap() ?: run {
+                note = "Bitmap 不可用"
+                publishLater(started)
+                return
+            }
+            val frame = PreviewFrameSource.grabTo(frameDir)
+            if (frame == null) {
+                note = "取帧失败（daemon/屏不在或超时）"
+                drops++
+                publishLater(started)
+                return
+            }
+            grabs++
+            lastGrabMs = frame.ms
+            daemonFrames = frame.frames
+            val ok = PreviewFrameSource.decodeInto(File(frame.path), bmp)
+            if (!ok) {
+                note = "解码失败（raw 不完整）"
+                drops++
+                publishLater(started)
+                return
+            }
+            val drawStart = System.currentTimeMillis()
+            val canvas: Canvas? = try {
+                h.lockCanvas()
+            } catch (t: Throwable) {
+                null
+            }
+            if (canvas == null) {
+                // 口径②：surface 已销毁/被占用 → 丢帧，绝不空指针、绝不卡线程
+                note = "lockCanvas 返回 null，丢帧"
+                drops++
+                publishLater(started)
+                return
+            }
+            try {
+                canvas.drawColor(Color.BLACK)
+                canvas.drawBitmap(bmp, null, dstRect(canvas.width, canvas.height), paint)
+            } finally {
+                try {
+                    h.unlockCanvasAndPost(canvas)
+                } catch (t: Throwable) {
+                    // surface 在这期间没了：忽略，下一拍照常
+                }
+            }
+            drawMs = System.currentTimeMillis() - drawStart
+            note = "ok"
+            publishLater(started)
+        }
+    }
+
+    private val paint = Paint(Paint.FILTER_BITMAP_FLAG).apply { isFilterBitmap = true; isAntiAlias = true }
+
+    /** 等比居中铺满控件，返回复用的 dst 矩形（避免每帧 new Rect）。 */
+    private val dst = Rect()
+    private fun dstRect(vw: Int, vh: Int): Rect {
+        if (vw <= 0 || vh <= 0) {
+            dst.set(0, 0, CAPTURE_W, CAPTURE_H)
+            return dst
+        }
+        val scale = minOf(vw.toFloat() / CAPTURE_W, vh.toFloat() / CAPTURE_H)
+        val w = (CAPTURE_W * scale).toInt()
+        val h = (CAPTURE_H * scale).toInt()
+        val l = (vw - w) / 2
+        val t = (vh - h) / 2
+        dst.set(l, t, l + w, t + h)
+        return dst
+    }
+
+    private fun ensureBitmap(): Bitmap? {
+        bitmap?.let { return it }
+        return try {
+            // 整个预览生命周期只建这一张，之后每帧 decodeInto 覆盖它的像素
+            Bitmap.createBitmap(CAPTURE_W, CAPTURE_H, Bitmap.Config.ARGB_8888).also { bitmap = it }
+        } catch (t: Throwable) {
+            null
+        }
+    }
+
+    /** 排下一拍：本拍耗时超过间隔就立刻再跑（自然降频），不排队、不补帧。 */
+    private fun scheduleNext() {
+        if (!running) return
+        val interval = 1000L / FPS
+        val next = handler ?: return
+        next.postDelayed(tick, interval)
+    }
+
+    private fun publishLater(started: Long) {
+        publish(note)
+        scheduleNext()
+        lastLatchAt = started
+    }
+
+    private fun publish(msg: String) {
+        val stat = Stat(running, grabs, drops, lastGrabMs, daemonFrames, drawMs, msg)
+        main.post { onStat?.invoke(stat) }
+    }
+
+    override fun surfaceCreated(h: SurfaceHolder) {
+        // surface 每次重建都是新的：Bitmap 与缓冲区留着，下一拍直接往新 surface 上贴
+        note = if (running) "surface 就绪" else "surface 就绪（预览未开）"
+        publish(note)
+    }
+
+    override fun surfaceChanged(h: SurfaceHolder, format: Int, width: Int, height: Int) {
+        publish("surface ${width}x$height")
+    }
+
+    override fun surfaceDestroyed(h: SurfaceHolder) {
+        // 只标记：渲染线程下一拍会因 !surface.isValid 自动丢帧，不会碰已销毁的 surface
+        note = "surface 已销毁"
+        publish(note)
+    }
+}
