@@ -570,16 +570,16 @@ private fun copyToClipboard(context: android.content.Context, text: String) {
  * 1. **默认关** —— 只有用户把开关打开才建 SurfaceView、才起抽帧线程（口径②：进 App 不许抢 CPU/IO）；
  * 2. 打开后才把 `PreviewRenderer` 绑到 SurfaceView 的 holder 并 `start()`；渲染线程自己等 surface 就绪，
  *    未就绪时只丢帧、不抓帧（不白烧 IO）；
- * 3. 关掉/离开界面即释放：`stop()` 停线程 → IO 线程 `PreviewSession.releaseAll()`
- *    → `destroy` + `DisplayInfo{"oas"` 归 0 校验，结果直接显示在界面上（口径④）。
+ * 3. 关掉/离开界面即「释放」= `stop()` 停线程（等 in-flight 那拍收尾）→ IO 线程 `cleanTempAndReport()`
+ *    只清预览目录下的临时 raw 并回显 oas 屏数量，**不 destroy 任何屏**（D-008）。
  */
 @Composable
 private fun PreviewSection(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var on by remember { mutableStateOf(false) }
-    // 只有「本次预览曾开过」才允许在离开界面时释放：oas 屏可能是用户为挂机手动建的，
-    // 打开一次 App 就把它 destroy 掉是事故。
+    // 只有「本次预览曾开过」才在离开界面时做清理（清临时 raw，不碰任何屏）：
+    // 预览自己不建屏，用户挂机用的 oas 屏绝不能被顺手 destroy（D-008）。
     val everStarted = remember { mutableStateOf(false) }
     var stat by remember { mutableStateOf<PreviewRenderer.Stat?>(null) }
     var releaseText by remember { mutableStateOf<String?>(null) }
@@ -595,8 +595,8 @@ private fun PreviewSection(modifier: Modifier = Modifier) {
      */
     fun cleanTempAndReport(): String {
         val dir = renderer.frameDir
-        val cacheRoot = context.cacheDir.absolutePath
         var removed = 0
+        var error: String? = null
         fun wipe(d: File) {
             d.listFiles()?.forEach { f ->
                 if (f.isDirectory) {
@@ -607,13 +607,23 @@ private fun PreviewSection(modifier: Modifier = Modifier) {
                 }
             }
         }
-        runCatching {
-            // 双保险：只在 app cache 目录内操作，绝不越界删别处
-            if (dir.absolutePath.startsWith(cacheRoot)) wipe(dir)
+        try {
+            // 双保险：只在 app cache 目录内操作。用 canonical 路径 + 分隔符比较，
+            // 避免 `/…/cacheXYZ` 这类裸前缀误命中；出任何异常只回一句原因，不靠删来崩。
+            val cacheCanon = context.cacheDir.canonicalPath + File.separator
+            val dirCanon = dir.canonicalPath
+            if (dirCanon.startsWith(cacheCanon)) {
+                wipe(dir)
+            } else {
+                error = "目录不在 cache 内，已跳过（$dirCanon）"
+            }
+        } catch (t: Throwable) {
+            error = "清理失败: ${t.message ?: t}"
         }
         val ids = PreviewSession.oasDisplayIds()
+        val tail = if (error == null) "" else "；$error"
         return "预览已停：清临时文件 $removed 个；oas 屏仍 ${ids.size} 块（未销毁" +
-            (if (ids.isEmpty()) "" else "：" + ids.joinToString(",")) + "）"
+            (if (ids.isEmpty()) "" else "：" + ids.joinToString(",")) + "）$tail"
     }
 
     /**
