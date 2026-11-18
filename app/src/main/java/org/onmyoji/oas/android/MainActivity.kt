@@ -578,6 +578,9 @@ private fun PreviewSection(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var on by remember { mutableStateOf(false) }
+    // 只有「本次预览曾开过」才允许在离开界面时释放：oas 屏可能是用户为挂机手动建的，
+    // 打开一次 App 就把它 destroy 掉是事故。
+    val everStarted = remember { mutableStateOf(false) }
     var stat by remember { mutableStateOf<PreviewRenderer.Stat?>(null) }
     var releaseText by remember { mutableStateOf<String?>(null) }
 
@@ -596,9 +599,10 @@ private fun PreviewSection(modifier: Modifier = Modifier) {
         }
     }
 
-    // 离开界面（返回/退出 App）也释放，绝不留一块 oas 屏在后台
+    // 离开界面（返回/退出 App）：只有本次预览曾开过才释放，绝不动用户手动建来挂机的 oas 屏
     DisposableEffect(Unit) {
         onDispose {
+            if (!everStarted.value) return@onDispose
             renderer.stop()
             // onDispose 里的 scope 已不可用，用独立的 IO 协程收尾
             CoroutineScope(Dispatchers.IO).launch {
@@ -623,6 +627,7 @@ private fun PreviewSection(modifier: Modifier = Modifier) {
                     on = want
                     if (want) {
                         releaseText = null
+                        everStarted.value = true
                     } else {
                         stopAndRelease()
                     }
