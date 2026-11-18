@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.SurfaceView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -28,10 +29,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -44,6 +47,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -53,6 +58,8 @@ import org.onmyoji.oas.android.diag.CheckState
 import org.onmyoji.oas.android.diag.SelfCheck
 import org.onmyoji.oas.android.poc.DisplayPoc
 import org.onmyoji.oas.android.poc.KeepAlivePoc
+import org.onmyoji.oas.android.preview.PreviewRenderer
+import org.onmyoji.oas.android.preview.PreviewSession
 import org.onmyoji.oas.android.python.PyRuntime
 import org.onmyoji.oas.android.root.Device
 import org.onmyoji.oas.android.root.DisplayServer
@@ -475,6 +482,9 @@ private fun SelfCheckScreen(modifier: Modifier = Modifier) {
             }
         }
 
+        // BG-35 C-2 片③：App 内实时预览（默认关，只有点开开关才抽帧）
+        PreviewSection()
+
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -551,4 +561,110 @@ private fun CheckCard(item: CheckItem) {
 private fun copyToClipboard(context: android.content.Context, text: String) {
     val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
     clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("OAS self-check", text))
+}
+
+/**
+ * BG-35 C-2 · 片③：App 内实时预览 `oas` 虚拟屏。
+ *
+ * 三条纪律：
+ * 1. **默认关** —— 只有用户把开关打开才建 SurfaceView、才起抽帧线程（口径②：进 App 不许抢 CPU/IO）；
+ * 2. 打开后才把 `PreviewRenderer` 绑到 SurfaceView 的 holder 并 `start()`；渲染线程自己等 surface 就绪，
+ *    未就绪时只丢帧、不抓帧（不白烧 IO）；
+ * 3. 关掉/离开界面即释放：`stop()` 停线程 → IO 线程 `PreviewSession.releaseAll()`
+ *    → `destroy` + `DisplayInfo{"oas"` 归 0 校验，结果直接显示在界面上（口径④）。
+ */
+@Composable
+private fun PreviewSection(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var on by remember { mutableStateOf(false) }
+    var stat by remember { mutableStateOf<PreviewRenderer.Stat?>(null) }
+    var releaseText by remember { mutableStateOf<String?>(null) }
+
+    val renderer = remember {
+        PreviewRenderer(File(context.cacheDir, "preview")).also { r -> r.onStat = { s -> stat = s } }
+    }
+
+    fun stopAndRelease() {
+        renderer.stop()
+        scope.launch {
+            val msg = withContext(Dispatchers.IO) {
+                runCatching { PreviewSession.releaseAll().summary() }
+                    .getOrElse { "释放失败: ${it.message ?: it}" }
+            }
+            releaseText = msg
+        }
+    }
+
+    // 离开界面（返回/退出 App）也释放，绝不留一块 oas 屏在后台
+    DisposableEffect(Unit) {
+        onDispose {
+            renderer.stop()
+            // onDispose 里的 scope 已不可用，用独立的 IO 协程收尾
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { PreviewSession.releaseAll() }
+            }
+        }
+    }
+
+    Column(modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "预览虚拟屏（默认关）",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(
+                checked = on,
+                onCheckedChange = { want ->
+                    on = want
+                    if (want) {
+                        releaseText = null
+                    } else {
+                        stopAndRelease()
+                    }
+                },
+            )
+        }
+
+        if (on) {
+            AndroidView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                factory = { ctx ->
+                    SurfaceView(ctx).also { sv ->
+                        // holder 此时已存在；surface 真正就绪由渲染线程自己判（isValid），
+                        // 未就绪时只丢帧不抓帧，所以这里可以放心直接 start()
+                        renderer.bind(sv.holder)
+                        renderer.start()
+                    }
+                },
+            )
+            val s = stat
+            Text(
+                if (s == null) {
+                    "预览启动中…"
+                } else {
+                    "抓帧 ${s.grabs}｜丢帧 ${s.drops}｜grab ${"%.0f".format(s.lastGrabMs)}ms" +
+                        "｜daemon frames ${s.daemonFrames}｜贴图 ${s.drawMs}ms｜${s.note}"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+            )
+        }
+
+        releaseText?.let {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(12.dp),
+                )
+            }
+        }
+    }
 }
