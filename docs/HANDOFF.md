@@ -393,7 +393,7 @@ app 只保留 UI + 前台服务 + socket 客户端。
 ## 十二、接力点（写手交棒用）
 > 制度见 `docs/WORKFLOW.md §1`：**一个写手位，可以换人，不可并行**。换棒时本节整节替换，不追加历史；**详细内容写在交接包里**（`docs/handoff/`）。
 
-- **分支**：`main`，head = **以 `git rev-parse --short main` 现查为准**（不要引用本文里的 sha，会自指过期；本行写入时点 = `20fa1a1`，2026-11-17）：PR #21 = BG-32 工具入库、PR #22 = 交接包 E 制度 + 首份主 AI 交接包、PR #23 = 交接包随合并自纠、PR #28 = P0-B patch 入库补记、PR #29 = hang_check 按真机口径认虚拟屏、**PR #30 = frames 改走 `--connect` + 心跳快路 + socket 2s + 硬超时自停**、**PR #31 = 心跳快路绕开 mksh 32 位算术**
+- **分支**：`main`，head = **以 `git rev-parse --short main` 现查为准**（不要引用本文里的 sha，会自指过期；本行写入时点 = `f6153b0`（PR #32 合并提交），2026-11-18）：PR #21 = BG-32 工具入库、PR #22 = 交接包 E 制度 + 首份主 AI 交接包、PR #23 = 交接包随合并自纠、PR #28 = P0-B patch 入库补记、PR #29 = hang_check 按真机口径认虚拟屏、**PR #30 = frames 改走 `--connect` + 心跳快路 + socket 2s + 硬超时自停**、**PR #31 = 心跳快路绕开 mksh 32 位算术**、**PR #32 = 收尾文档 + 交接包换棒（删两份旧包，指针切 `20261118-1320-main-ai.md`）**
 - **在飞分支**：无未合并工作。**2026-11-17 再次清理**：远端与本地都只剩 `main`（删了 `feat/bg32-hangcheck-fix`、`feat/p0b-android-impl`、`fix/bg32-frames-and-timeout`、`fix/bg32-hbframes-32bit` 四个 head，均已 squash 合并）；工作区 `git status` 干净，`build/gate-strip` 为构建中间产物、未入库
 - **P0-B 现状（2026-11-15 13:52）**：A5 的实现以 `patches/p0b-android-impl.patch` 形式已在 main（PR #27 `6904024`，属误入后补评审，D 结论 **PASS with nits**）；**尚未 apply 到 vendor、未真机自测**；必改项 = `tools/fetch_vendor.sh:29` 只 apply 单个 patch，改为遍历 `patches/*.patch` 并把本 patch 改名 `0002-…` 控序
 - **主 AI 交接包（当前）**：`docs/handoff/20261118-1320-main-ai.md`（**调度位换人先读这个**；实查 171 行、七要素齐全、含会话名册（chat_id 实查）/ 排除记录全文 / 可执行待办；上一棒 `bf52e69a…` 的旧包 `20261115-1339-main-ai.md` 与 `20261117-2320-main-ai.md` 均已按用户「只留最新一份」删除，历史见 `git log -- docs/handoff/`）
