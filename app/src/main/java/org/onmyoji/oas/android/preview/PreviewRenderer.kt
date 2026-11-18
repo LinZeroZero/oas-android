@@ -54,6 +54,14 @@ class PreviewRenderer(private val cacheDir: File) : SurfaceHolder.Callback {
 
     @Volatile
     private var running = false
+
+    /**
+     * 代际：每次 `start()`/`stop()` 自增。每一拍的 Runnable 都绑定自己那一代的编号，
+     * 收尾排下一拍前比对 —— 旧代 in-flight 的一拍**不会再往新 handler 上挂任务**，
+     * 否则 stop→start 会形成两条 tick 链（帧率翻倍、IO 翻倍）。
+     */
+    @Volatile
+    private var generation = 0
     private var bitmap: Bitmap? = null
     private val frameDir = File(cacheDir, "preview")
     private var grabs = 0L
@@ -65,7 +73,10 @@ class PreviewRenderer(private val cacheDir: File) : SurfaceHolder.Callback {
     private var note = "未开始"
 
     fun bind(holder: SurfaceHolder) {
+        // 先摘再挂：重复 bind（反复开关预览）不会累积回调
+        this.holder?.let { runCatching { it.removeCallback(this) } }
         this.holder = holder
+        holder.removeCallback(this)
         holder.addCallback(this)
     }
 
@@ -75,11 +86,13 @@ class PreviewRenderer(private val cacheDir: File) : SurfaceHolder.Callback {
     fun start() {
         if (running) return
         running = true
+        generation++
+        val gen = generation
         lastLatchAt = System.currentTimeMillis()
         val t = HandlerThread("oas-preview").also { it.start() }
         thread = t
         handler = Handler(t.looper)
-        handler?.post(tick)
+        handler?.post(newTick(gen))
         publish("抓帧中")
     }
 
@@ -87,6 +100,7 @@ class PreviewRenderer(private val cacheDir: File) : SurfaceHolder.Callback {
     fun stop() {
         if (!running && thread == null) return
         running = false
+        generation++
         handler?.removeCallbacksAndMessages(null)
         thread?.quitSafely()
         thread = null
@@ -94,67 +108,75 @@ class PreviewRenderer(private val cacheDir: File) : SurfaceHolder.Callback {
         publish("已停止")
     }
 
-    private val tick = object : Runnable {
+    /** 每一代一个 Runnable：旧代 in-flight 的一拍收尾时 gen != generation → 不再往新 handler 排任务。 */
+    private fun newTick(gen: Int): Runnable = object : Runnable {
         override fun run() {
-            if (!running) return
-            val started = System.currentTimeMillis()
-            val h = holder
-            if (h == null || !h.surface.isValid) {
-                // surface 还没准备好：不抓帧（省 IO），下一拍再看
-                note = "surface 未就绪"
-                drops++
-                publishLater(started)
-                return
-            }
-            val bmp = ensureBitmap() ?: run {
-                note = "Bitmap 不可用"
-                publishLater(started)
-                return
-            }
-            val frame = PreviewFrameSource.grabTo(frameDir)
-            if (frame == null) {
-                note = "取帧失败（daemon/屏不在或超时）"
-                drops++
-                publishLater(started)
-                return
-            }
-            grabs++
-            lastGrabMs = frame.ms
-            daemonFrames = frame.frames
-            val ok = PreviewFrameSource.decodeInto(File(frame.path), bmp)
-            if (!ok) {
-                note = "解码失败（raw 不完整）"
-                drops++
-                publishLater(started)
-                return
-            }
-            val drawStart = System.currentTimeMillis()
-            val canvas: Canvas? = try {
-                h.lockCanvas()
-            } catch (t: Throwable) {
-                null
-            }
-            if (canvas == null) {
-                // 口径②：surface 已销毁/被占用 → 丢帧，绝不空指针、绝不卡线程
-                note = "lockCanvas 返回 null，丢帧"
-                drops++
-                publishLater(started)
-                return
-            }
-            try {
-                canvas.drawColor(Color.BLACK)
-                canvas.drawBitmap(bmp, null, dstRect(canvas.width, canvas.height), paint)
-            } finally {
-                try {
-                    h.unlockCanvasAndPost(canvas)
-                } catch (t: Throwable) {
-                    // surface 在这期间没了：忽略，下一拍照常
-                }
-            }
-            drawMs = System.currentTimeMillis() - drawStart
-            note = "ok"
-            publishLater(started)
+            if (gen != generation || !running) return
+            tickOnce(gen)
         }
+    }
+
+    /** 一拍本体；[gen] 是这一拍所属的代际。 */
+    private fun tickOnce(gen: Int) {
+        val started = System.currentTimeMillis()
+        val h = holder
+        if (h == null || !h.surface.isValid) {
+            // surface 还没准备好：不抓帧（省 IO），下一拍再看
+            note = "surface 未就绪"
+            drops++
+            publishLater(started, gen)
+            return
+        }
+        val bmp = ensureBitmap() ?: run {
+            note = "Bitmap 不可用"
+            publishLater(started, gen)
+            return
+        }
+        val frame = PreviewFrameSource.grabTo(frameDir)
+        if (frame == null) {
+            note = "取帧失败（daemon/屏不在或超时）"
+            drops++
+            publishLater(started, gen)
+            return
+        }
+        grabs++
+        lastGrabMs = frame.ms
+        daemonFrames = frame.frames
+        val ok = PreviewFrameSource.decodeInto(
+            File(frame.path), bmp, frame.width, frame.height, frame.rowStride,
+        )
+        if (!ok) {
+            note = "解码失败（raw 不完整/尺寸不符），丢帧"
+            drops++
+            publishLater(started, gen)
+            return
+        }
+        val drawStart = System.currentTimeMillis()
+        val canvas: Canvas? = try {
+            h.lockCanvas()
+        } catch (t: Throwable) {
+            null
+        }
+        if (canvas == null) {
+            // 口径②：surface 已销毁/被占用 → 丢帧，绝不空指针、绝不卡线程
+            note = "lockCanvas 返回 null，丢帧"
+            drops++
+            publishLater(started, gen)
+            return
+        }
+        try {
+            canvas.drawColor(Color.BLACK)
+            canvas.drawBitmap(bmp, null, dstRect(canvas.width, canvas.height), paint)
+        } finally {
+            try {
+                h.unlockCanvasAndPost(canvas)
+            } catch (t: Throwable) {
+                // surface 在这期间没了：忽略，下一拍照常
+            }
+        }
+        drawMs = System.currentTimeMillis() - drawStart
+        note = "ok"
+        publishLater(started, gen)
     }
 
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG).apply { isFilterBitmap = true; isAntiAlias = true }
@@ -185,17 +207,16 @@ class PreviewRenderer(private val cacheDir: File) : SurfaceHolder.Callback {
         }
     }
 
-    /** 排下一拍：本拍耗时超过间隔就立刻再跑（自然降频），不排队、不补帧。 */
-    private fun scheduleNext() {
-        if (!running) return
-        val interval = 1000L / FPS
+    /** 排下一拍：**只给同代续排**（旧代 in-flight 的一拍到此为止），不排队、不补帧。 */
+    private fun scheduleNext(gen: Int) {
+        if (!running || gen != generation) return
         val next = handler ?: return
-        next.postDelayed(tick, interval)
+        next.postDelayed(newTick(gen), 1000L / FPS)
     }
 
-    private fun publishLater(started: Long) {
+    private fun publishLater(started: Long, gen: Int) {
         publish(note)
-        scheduleNext()
+        scheduleNext(gen)
         lastLatchAt = started
     }
 

@@ -22,12 +22,23 @@ import java.nio.ByteBuffer
  */
 object PreviewFrameSource {
 
-    /** 抓一帧的结果。`bytes`/`ms`/`frames` 原样取自 daemon 回包，便于自测记录。 */
-    data class Frame(val bytes: Long, val ms: Double, val frames: Long, val path: String)
+    /** 抓一帧的结果。`bytes`/`ms`/`frames` 与尺寸/行宽都**原样取自 daemon 回包**，便于自测记录。 */
+    data class Frame(
+        val bytes: Long,
+        val ms: Double,
+        val frames: Long,
+        val path: String,
+        val width: Int = CAPTURE_W,
+        val height: Int = CAPTURE_H,
+        val rowStride: Int = CAPTURE_W * 4,
+    )
 
-    /** 复用缓冲：1280×720×4 = 3,686,400 B 定长，避免每帧分配 3.6 MB 触发 GC 抖动。 */
-    private var packedBuffer: ByteBuffer? = null
-    private var strideBuffer: ByteArray? = null
+    private const val CAPTURE_W = 1280
+    private const val CAPTURE_H = 720
+
+    /** 复用缓冲：整帧 3.6 MB + 单行 stride，**长度不够才重建**（每帧新建 = 5 fps 约 18 MB/s 垃圾）。 */
+    private var wholeBuffer: ByteArray? = null
+    private var rowBuffer: ByteArray? = null
 
     /**
      * 现查当前 oas 虚拟屏 id；没有返回 -1。
@@ -59,11 +70,18 @@ object PreviewFrameSource {
         )
         val grab = json.optJSONObject("grab") ?: return null
         if (!grab.optBoolean("ok", false)) return null
+        // 尺寸与行宽一律以 daemon 回包为准（回包字段就是 w / h / rowStride），取不到才回退默认值。
+        val w = grab.optInt("w", grab.optInt("width", CAPTURE_W)).takeIf { it > 0 } ?: CAPTURE_W
+        val h = grab.optInt("h", grab.optInt("height", CAPTURE_H)).takeIf { it > 0 } ?: CAPTURE_H
+        val stride = grab.optInt("rowStride", w * 4).takeIf { it >= w * 4 } ?: (w * 4)
         return Frame(
             bytes = grab.optLong("bytes", -1L),
             ms = grab.optDouble("ms", -1.0),
             frames = grab.optLong("frames", -1L),
             path = out.absolutePath,
+            width = w,
+            height = h,
+            rowStride = stride,
         )
     }
 
@@ -74,39 +92,44 @@ object PreviewFrameSource {
      * 若未来出现 padding，这里按行拷，不会解出斜图。
      * 返回 false = 文件不完整 / 尺寸不匹配（调用方应丢帧，不要显示半张图）。
      */
-    fun decodeInto(file: File, bitmap: Bitmap, strideBytes: Int = bitmap.width * 4): Boolean {
-        val w = bitmap.width
-        val h = bitmap.height
-        val rowBytes = w * 4
-        if (strideBytes < rowBytes) return false
-        val need = strideBytes.toLong() * h
+    fun decodeInto(
+        file: File,
+        bitmap: Bitmap,
+        width: Int = bitmap.width,
+        height: Int = bitmap.height,
+        rowStride: Int = 0,
+    ): Boolean {
+        if (width <= 0 || height <= 0) return false
+        val bw = bitmap.width
+        val bh = bitmap.height
+        // 帧尺寸必须与目标 Bitmap 一致。这一版不做「解码后再缩放」（那等于每帧新建 Bitmap，
+        // 破坏「只建一次」的复用约定），不一致就整帧丢掉，由调用方计 drop + note 暴露出来。
+        // 当前捕获侧恒 1280×720，正常走不到这里。
+        if (width != bw || height != bh) return false
+        val rowBytes = width * 4
+        val stride = if (rowStride > 0) rowStride else rowBytes
+        if (stride < rowBytes) return false
+        val need = stride.toLong() * height
         if (file.length() < need) return false
 
-        val packed = packedBuffer?.takeIf { it.capacity() >= rowBytes * h }
-            ?: ByteBuffer.allocate(rowBytes * h).also { packedBuffer = it }
-        packed.clear()
-
+        val whole = wholeBuffer?.takeIf { it.size >= rowBytes * height }
+            ?: ByteArray(rowBytes * height).also { wholeBuffer = it }
         try {
             RandomAccessFile(file, "r").use { raf ->
-                if (strideBytes == rowBytes) {
-                    // 快路：无 padding，整块读
-                    val all = ByteArray(rowBytes * h)
-                    raf.readFully(all)
-                    packed.put(all)
+                if (stride == rowBytes) {
+                    // 快路：无 padding，一次读满复用缓冲
+                    raf.readFully(whole, 0, rowBytes * height)
                 } else {
-                    // 慢路：逐行读 stride、只拷 rowBytes
-                    val stride = strideBuffer?.takeIf { it.size >= strideBytes }
-                        ?: ByteArray(strideBytes).also { strideBuffer = it }
-                    val row = ByteArray(rowBytes)
-                    for (y in 0 until h) {
-                        raf.readFully(stride, 0, strideBytes)
-                        System.arraycopy(stride, 0, row, 0, rowBytes)
-                        packed.put(row)
+                    // 慢路：逐行读 stride，只留前 rowBytes
+                    val row = rowBuffer?.takeIf { it.size >= stride }
+                        ?: ByteArray(stride).also { rowBuffer = it }
+                    for (y in 0 until height) {
+                        raf.readFully(row, 0, stride)
+                        System.arraycopy(row, 0, whole, y * rowBytes, rowBytes)
                     }
                 }
             }
-            packed.rewind()
-            bitmap.copyPixelsFromBuffer(packed)
+            bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(whole, 0, rowBytes * height))
             return true
         } catch (t: Throwable) {
             return false
