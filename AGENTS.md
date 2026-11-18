@@ -1,7 +1,9 @@
 # AGENTS.md — 规矩（什么不许做）
 
 > **任何 AI 会话开工第一件事：读本文件 + `PROGRESS.md` + `DECISIONS.md`。**
-> 三份合计一屏可读完；读不完等于没写。详细流程见 `docs/WORKFLOW.md`，全量待办见 `docs/BACKLOG.md`，历史账见 `docs/HANDOFF.md`。
+> **上限：本文件 ≤50 行 · `PROGRESS.md` ≤40 行 · `DECISIONS.md` 每条 1 行。超了就删，不是缩。**
+> 只留**结论**，原因下沉 `docs/`；历史交 `git log`；**过时规则立即删**（过时比没有更糟）；新增一条就删一条，总长不变。
+> 例外：**不可逆损失**类（boot/vbmeta、装包路径、权限、jar 字节）不受行数限制。详细流程 `docs/WORKFLOW.md`，全量待办 `docs/BACKLOG.md`，历史 `docs/HANDOFF.md`。
 
 ## 1. 角色边界（谁都不能越位）
 
@@ -31,10 +33,8 @@
 - `main` 受保护（含 admin 也绕不过）：只能 **分支 → PR → 门禁绿 → 用户签发 → squash 合并**。
 - push 前过 `bash tools/gate.sh --static`；CI 必需检查 `static-gate`。
 - **改了 `app/` 或 `poc/` 就必须同时更新 `PROGRESS.md`**（gate 第⑥项强制；确无状态变化时用 `OAS_SKIP_PROGRESS_CHECK=1` 并在 PR 里说明）。
-- 子会话开工顺序：**先建产物文件骨架，再补内容**；没核到的写 `TODO(未核)`，不许为一行号回头重读全文。
-- 子会话回执 **≤5 行**（改动 / 判据 / 证据 / 下一步 / 阻塞），详情写 `/tmp/outbox/<角色>-<任务>.md`。
-- **主 AI 不 `read_messages` 读子会话**（会把 think 链灌进上下文），只看 outbox 文件 + `agent_status`。
-- 子会话只用主对话工作区的**绝对路径**，不许另建副本（会造成文件分叉）。
+- 子会话：**先建产物骨架再补内容**（没核到写 `TODO(未核)`）；回执 **≤5 行**，详情写 `/tmp/outbox/<角色>-<任务>.md`；只用主工作区**绝对路径**，不许另建副本。
+- **主 AI 不 `read_messages` 读子会话**（会灌 think 链进上下文），只看 outbox + `agent_status`。
 - 命令坑：`terminal` 里跑裸 `git diff` 会进 less **锁死会话**，一律 `git --no-pager … | cat`。
 
 ## 4. 真机实验收工定序（缺一不算完）
