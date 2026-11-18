@@ -6,7 +6,7 @@
 - `main` = **最新合并提交**（要具体 sha 就 `git log --oneline -1`；本文件不记，见 `DECISIONS.md` D-013）；本地与远端都只剩 `main`；`git status` 干净
 - `server.jar` = **29,253 B**（未重打）
 - 最近合并：**PR #44** 预览临时 raw 清理修复（真机验收发现）；**PR #43** 瘦身纪律 + gate 第⑦项；**PR #42** 状态三件套 + gate 第⑥项；**PR #41** 口径④修正；**PR #40** C-2 实时预览
-- 可分发 APK（PR #44 那次编译）：`app/build/outputs/apk/debug/app-debug.apk` = **48,584,270 B**；`dist/` 里两个包是旧的，未更新
+- 可分发 APK：`app/build/outputs/apk/debug/app-debug.apk`（PR #44 那次编译，约 48.58 MB；字节以 `ls -l` 为准，本文件不记，同 D-013）；`dist/` 里两个包是旧的，未更新
 
 ## 在飞
 - **无**。PR #44 合并后分支即删；下一个 PR 是 `docs/records-closeout`（下一条第 3 项）
