@@ -4,14 +4,14 @@
 
 ## 文件命名
 
-`YYYYMMDD-HHMM-<BACKLOG 号>-<slug>.md`，例如 `20261118-1800-main-ai.md`。只保留当前这一棒；被接替的旧包**直接删除**（git 历史即复盘），不再设 `archive/` 目录。
+`YYYYMMDD-HHMM-<BACKLOG 号>-<slug>.md`，例如 `20261118-2200-main-ai.md`。只保留当前这一棒；被接替的旧包**直接删除**（git 历史即复盘），不再设 `archive/` 目录。
 
 **四类交接包，别混：**
 
 | 类型 | 文件名 | 谁读 | 例子 |
 |---|---|---|---|
 | 写手棒交接包 | `YYYYMMDD-HHMM-<BG号>-<slug>.md` | 接棒的写手会话 | `20261118-1449-BG-32-p0a-hangcheck.md`（**当前**） |
-| 主 AI 交接包 | `YYYYMMDD-HHMM-main-ai.md` | 接任的调度会话（上下文压缩/换人时） | `20261118-1800-main-ai.md`（**当前**） |
+| 主 AI 交接包 | `YYYYMMDD-HHMM-main-ai.md` | 接任的调度会话（上下文压缩/换人时） | `20261118-2200-main-ai.md`（**当前**） |
 | E 棒交接包 | `YYYYMMDD-HHMM-e1-handoff.md` | 接任的交接包位 E<n> 会话（E 换棒时） | `20261118-1359-e1-handoff.md`（**当前**） |
 | D 棒交接包 | `YYYYMMDD-HHMM-d-reviewer.md` | 接任的调研兼评审（D）会话（D 换棒时） | `20261118-1420-d-reviewer.md`（**当前**） |
 
