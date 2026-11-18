@@ -10,7 +10,9 @@
   - **阶段 1 PoC-A 完成（7/7）** —— root 特权守护进程建 `1280×720@320` 虚拟屏，**阴阳师原生渲染在里面**，主屏照常用手机；抓帧 **p50 5.0 ms**、定向点击只作用虚拟屏、主屏刷别的 App 时虚拟屏仍持续出帧
 - 下一步：**P1 前台服务 + WakeLock**（解决 app 进程被 cached-app freezer 冻结），然后 Python 3.13 / `CvBridge` / `android_impl.py` 插拔点
 
-> 📌 **接手开发请先看 [docs/HANDOFF.md](docs/HANDOFF.md)**（当前状态 + 待办清单 + 冷启动步骤 + 已踩过的坑）。
+> 📌 **接手开发（人或 AI）先读三份，一屏读完**：
+> [**AGENTS.md**](AGENTS.md) 规矩（什么不许做）· [**PROGRESS.md**](PROGRESS.md) 位置（现在干到哪、下次从哪接）· [**DECISIONS.md**](DECISIONS.md) 决定（为什么这么定、怎么退回去）。
+> 三份之外都是**按需深读**：全量待办 [docs/BACKLOG.md](docs/BACKLOG.md)、流程手册 [docs/WORKFLOW.md](docs/WORKFLOW.md)、历史台账 [docs/HANDOFF.md](docs/HANDOFF.md)（**状态已过期，只作历史**）。
 > 📁 交接包只留最新一份（`docs/handoff/`），旧包不归档、不堆积，历史见 `git log -- docs/handoff/`
 > 阶段 1 虚拟屏的设计、socket 协议、7 项实测数据、参考实现对照见 **[docs/BACKGROUND.md](docs/BACKGROUND.md)**。
 > 阶段 0 的历史踩坑记录见 [docs/PORTING.md](docs/PORTING.md)（历史档案，其中 `wm size` 相关结论已废弃）。
