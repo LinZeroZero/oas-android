@@ -128,7 +128,7 @@
   - 现状处置（用户决策 2026-11-15）：**不追分组**，靠 `OAS-<角色><序号> <任务>` 标题前缀识别接力会话；需归组时由用户手动移动
   - 归属：工具侧限制（非本项目代码问题）；若 Operit 后续提供设置分组的 API，再回来关掉这条
 
-- [ ] **BG-32 长时挂机没有可复现的检测手段**（工具链路已真机验证，**正式 14 分钟真熄屏长跑待约时点**）
+- [x] **BG-32 长时挂机没有可复现的检测手段**（工具链路已真机验证，**正式 14 分钟真熄屏长跑 2026-11-18 22:46–23:00 已跑完 = PASS**）
   - 交付：`tools/hang_check.sh`（现 776 行，写手 A5 实现；D 三轮 4-eyes 均 PASS，最新 2026-11-17 `20fa1a1`）
   - 形态：Android root shell（toybox `sh`），`start` / `status` / `stop` / `help`；只读 `/proc`、`/sys/power/wake_lock`、`dumpsys`；不改系统设置、不装应用、不注册自启动；自己不建屏、不拉游戏
   - 每拍 15 列（`|` 分隔）：`ts|awake|ndisp|did|dpid|djiff|gpid|gjiff|sfjiff|wl|load1|memfree|frames|dstate|gstate`
@@ -148,6 +148,11 @@
     - ①游戏停在「客户端版本已更新，需下载额外资源 **27.7MB**，建议 wifi」静态弹窗（grab 转图读出；本机无 Wi‑Fi、默认 `MOBILE NR`）→ 画面不动，`frames` 冻在 544（292→544 后无增长；`grab` 三次同帧 `mean=126.39`、`blackRatio=0.0000`）→ 冻结是**结果**，不是出帧通路坏
     - ②display 38 上游戏 `Task{#933}` = `visible=false visibleRequested=false`、`mLastPausedActivity=.Client`、`mCurrentFocus=null`；三次输入探针（`tap 800 530` / `keyevent 4` / `tap 640 120`）均无像素变化、`frames` 恒 544 → **`input -d 38` 未投递**，D 段「唤醒 + 定向点击」**当前不可验** → 见 **BG-34**
     - 本轮**未熄屏、未跑 `hang_check start`、未点「确定」**（27.7MB 走移动数据，需用户点头）
+  - **2026-11-18 增量（正式长跑 PASS，证据 `docs/evidence/20261118-2300-BG-32-p0a-longrun.md`）**：22:46:11 `start` → 23:00:24 `stop`，四段按 121/60/600/15s 走完（`A_start 22:46:17 … phases_done 22:59:33`）
+    - 报告：样本 135 / 846s / 自停否 / 采样最大间隔 7s / 虚拟屏 1（displayId 43）/ 非 Awake 94/135（69%）/ daemon 26738→26738（CPU +1623）/ 游戏 26808→26808（CPU +14648）/ D-T 冻结 0 样本 / 帧数 **603→7435（+6832）** / CSV 恒 15 列 → **判定: PASS**
+    - **判据纠正（勿再误判）**：`stop` 报告的样本数天然低于「理论拍数」——846s÷135=6.27s/拍，单拍串行跑多条 `dumpsys` 已超设定的 5s 间隔；「节流跳过 108 拍」只是 **frames 列**按每 5 拍走一次 app 通道，不是丢样本。BACKLOG 第 135 行官方口径**没有样本数下限**，派单时写的「样本≥168」是把 846/5≈169 误当应落盘数，属伪判据，已作废
+    - 执行人 A6；收工按纪律走「确认铃响 → 亮屏 → 拉 Operit 前台」：**960s 完成铃 = 哑铃（该实例未触发，`USAGE_ALARM state:started` 计数 0、无 23:01 `requestAudioFocus` 记录）**，另设 60s 对照铃于 23:03:09 真响（`TimerKlaxon` + `USAGE_ALARM` started=1 + Clock CPU 33852→37277）→ `SET_TIMER` 通路本身正常，但**完成铃不可依赖，下次收工改用「双计时器 + 到点前 1 分钟人工确认」**
+    - **未验（BG-34 阻塞）**：D 段 `input -d 43 tap 640 360` 是否真投递到游戏 —— 本轮只验到「唤醒后链路仍在」，不含「定向点击生效」
   - 归属：A5（代码）/ D（评审）/ 主 AI（签发）/ 用户（真机长跑配合）
 
 ## 七、新需求立项（P1，先立项再排期）
