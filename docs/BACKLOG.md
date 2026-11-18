@@ -152,7 +152,7 @@
 
 ## 七、新需求立项（P1，先立项再排期）
 
-- [ ] **BG-35 App 内实时预览虚拟屏（in-app live preview）** —— 新需求，2026-11-18 立项，**未开工**
+- [ ] **BG-35 App 内实时预览虚拟屏（in-app live preview）** —— 2026-11-18 立项；**C-2 代码已合并（PR #40 = `a531ba4`），待真机验收**
   - **来源**：用户 2026-11-18 提供 `https://github.com/Shinarin/ALAS-AOS` + 内嵌虚拟屏截图，明确「这个项目就可以直接在软件里显示虚拟屏」；计划模式拍板口径 **q1=(b)「要 OAS 也能在 App 里内嵌实时预览」**
   - **现状实查（2026-11-18，main = `e4d3e3e`）**：`app/src/main` 全 28 个文件 grep `SurfaceView|TextureView|SurfaceTexture|ImageReader` **命中 0** → App 内**零**预览能力；当前唯一出图路径是 daemon `grab` → raw → 转 PNG（离线单帧，不是实时）
   - **已有基础**：daemon 侧 `ImageReader.newInstance(w,h,RGBA_8888,3)` 早已在跑（`poc/displayserver/.../DisplayEngine.java:100-101`），`grab` 就在读它 → **预览不需要重建捕获通路**，只缺「帧 → App → 显示」这一段
@@ -162,8 +162,15 @@
     1. App 内预览区显示 `oas` 虚拟屏，**肉眼可见画面在动**
     2. 预览期间**主屏可正常使用**，不掉帧、不黑屏
     3. 预览更新时 daemon `stats` 的 **`frames` 单调增长**
-    4. **不引入开机自启**、不改分辨率/系统设置、退出预览即释放（收工 `DisplayInfo{"oas"` 归 0）
+    4. **不引入开机自启**、不改分辨率/系统设置；退出预览＝停渲染线程 + 清临时 raw，**不销毁任何虚拟屏**（2026-11-18 用户批准修正。原写「收工 `DisplayInfo{"oas"` 归 0」是照 C-2 早期 `mirror` 方案（会自建屏）写的；现实现只用 `grab` 抓现有画面、**不自建屏**，照原口径会在用户挂机时点开预览再关掉即 destroy 掉挂机屏 —— 事故级，故改）
   - **归途**：主 AI 立项/验收 → 写手实现（唯一代码位 A6）→ D 4-eyes 评审 → 真机验收（熄屏类须用户定时点、收工先确认铃响再亮屏再拉 Operit 前台）
   - **排期候选（主 AI 建议，未拍板）**：**C-1** 只改 flags 重打 jar（判据：`input -d <id> tap` 让 `frames` 变化且 `mCurrentFocus` 非 null）→ **C-2** App 内预览（判据＝上面四条）→ **C-3** 预览与主屏共存调优（含与 BG-22 `setSurface(null)` 的冲突：空 Surface 即 `STATE_OFF`，预览中不可停渲）；每项一个 PR，不合并铺开
   - **约束**：ALAS-AOS 为 **AGPL-3.0**，**只按 AOSP 常量名自行实现，不移植其任何文件**；flag 数值一律写常量名，不写魔数（D 报的 `0x1fd47` 是推算且与按位累加不符）
-  - 归属：主 AI（立项/排期/验收）→ 写手（实现）→ D（评审）
+  - **2026-11-18 增量（C-2 落地，PR #40 = `a531ba4`）**：
+  - 实现：**不复用 `mirror`**（`SocketServer.cmdMirror` 硬编码 `Thread.sleep(1200)` + 每帧建屏/销毁），改「daemon `grab` 写 raw → App `Bitmap` → `SurfaceView` + `lockCanvas`」；5fps、单帧 1280×720×4 = 3,686,400 B；预览**默认关**、手动点开；`server.jar` 全程保持 **29253 B**（未重打、未动 flags）
+  - 新增文件：`preview/PreviewFrameSource.kt`（取帧 + RGBA→Bitmap 解码，buffer 复用、`rowStride` 校验）、`preview/PreviewRenderer.kt`（渲染线程 + 代际校验 + Bitmap 复用）、`preview/PreviewSession.kt`（屏/释放复核工具，当前无调用方）、`MainActivity` 的 `PreviewSection`
+  - 4-eyes 两轮（D2）：首轮 **CHANGES 4 条阻断** → 修复三笔（`461db0a` 守卫 / `7ed6a2e` 代际+buffer+stride / `3a518c3` 退出不销毁屏）→ 二轮 **PASS**
+  - 阻断里有一条**事故级**：`onDispose` 无条件 `releaseAll()` → 用户挂机时点开预览再退出即 destroy 掉挂机屏。已改为「预览只读不建屏，退出只停渲染 + 清临时 raw」
+  - 构建证据：`assembleDebug` rc=0；`app-debug.apk` = 48,583,631 B
+  - **未做**：真机验收（四条口径一条未跑）；C-1（flags 重打 jar）、C-3（预览与主屏共存）未开
+- 归属：主 AI（立项/排期/验收）→ 写手（实现）→ D（评审）
