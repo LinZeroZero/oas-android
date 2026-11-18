@@ -631,22 +631,29 @@ private fun PreviewSection(modifier: Modifier = Modifier) {
      * 那块屏很可能是用户手动建来挂机的，销毁它就是事故（口径④容易被误读为「必须销毁」）。
      */
     fun stopAndRelease() {
-        renderer.stop()
         scope.launch {
             releaseText = withContext(Dispatchers.IO) {
-                runCatching { cleanTempAndReport() }.getOrElse { "停止时出错: ${it.message ?: it}" }
+                runCatching {
+                    // stop() 会 join 在途那一拍（最长 4500ms，> grab 的 4000ms 超时）
+                    // → 必须整段放 IO，绝不能卡主线程（否则接近 ANR）
+                    renderer.stop()
+                    cleanTempAndReport()
+                }.getOrElse { "停止时出错: ${it.message ?: it}" }
             }
         }
     }
 
-    // 离开界面（返回/退出 App）：同样只停线程 + 清临时文件，绝不 destroy 用户挂机用的 oas 屏
+    // 离开界面（返回/退出 App）：同样只停线程 + 清临时文件，绝不 destroy 用户挂机用的 oas 屏。
+    // stop() 会 join 在途那一拍（最长 4500ms）→ 连它一起放进 IO 协程，onDispose 不阻塞主线程。
     DisposableEffect(Unit) {
         onDispose {
-            renderer.stop()
-            if (!everStarted.value) return@onDispose
+            val started = everStarted.value
             // onDispose 里的 scope 已不可用，用独立的 IO 协程收尾
             CoroutineScope(Dispatchers.IO).launch {
-                runCatching { cleanTempAndReport() }
+                runCatching {
+                    renderer.stop()
+                    if (started) cleanTempAndReport()
+                }
             }
         }
     }

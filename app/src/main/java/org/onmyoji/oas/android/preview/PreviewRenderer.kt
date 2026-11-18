@@ -106,9 +106,11 @@ class PreviewRenderer(private val previewDir: File) : SurfaceHolder.Callback {
         val t = thread
         t?.quitSafely()
         // 等 in-flight 那一拍真正收尾再返回：否则调用方紧接着 wipe 目录，而 daemon 会在
-        // grab 收尾时把 frame.raw 写回来 —— 「退出清不掉 raw」会偶发重现。上限 1500ms，绝不卡死。
+        // grab 收尾时把 frame.raw 写回来 —— 「退出清不掉 raw」会偶发重现。
+        // 上限必须 **大于** 抓帧超时（PreviewFrameSource.grabTo 用 4000ms），留 500ms 余量。
+        // ⚠ 本方法会阻塞调用线程最长 4500ms → 调用方必须放在 IO 线程，不许在主线程调。
         try {
-            t?.join(1500)
+            t?.join(4500)
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
         }
