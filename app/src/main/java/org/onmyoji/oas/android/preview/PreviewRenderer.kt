@@ -103,7 +103,12 @@ class PreviewRenderer(private val previewDir: File) : SurfaceHolder.Callback {
         running = false
         generation++
         handler?.removeCallbacksAndMessages(null)
+        // 先把字段置空、再用局部变量收尾：stop() 可能跑 4.5s，期间用户「关了马上再开」会在
+        // 主线程建新 HandlerThread 并写进 thread/handler —— 旧代绝不能在 join 回来后把它们清掉，
+        // 否则新 tick 链会在 scheduleNext() 的 `handler ?: return` 处默默断掉（开关开着却不刷新）。
         val t = thread
+        thread = null
+        handler = null
         t?.quitSafely()
         // 等 in-flight 那一拍真正收尾再返回：否则调用方紧接着 wipe 目录，而 daemon 会在
         // grab 收尾时把 frame.raw 写回来 —— 「退出清不掉 raw」会偶发重现。
@@ -114,8 +119,6 @@ class PreviewRenderer(private val previewDir: File) : SurfaceHolder.Callback {
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
         }
-        thread = null
-        handler = null
         publish("已停止")
     }
 
