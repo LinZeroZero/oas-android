@@ -23,7 +23,7 @@ import java.io.File
  * 节奏：默认 [FPS] 拍/秒（可调常量，主 AI 口径 5~6）；只取最新帧、不排队 —— 每拍完成后再排下一拍，
  * 单拍超时就自然降频，绝不堆积任务。抓帧走片① 的 [PreviewFrameSource]（daemon `grab`，不动 jar）。
  */
-class PreviewRenderer(private val cacheDir: File) : SurfaceHolder.Callback {
+class PreviewRenderer(private val previewDir: File) : SurfaceHolder.Callback {
 
     companion object {
         /** 预览帧率；5~6 是主 AI 给的口径，调这里即可，不要散落魔数。 */
@@ -63,7 +63,8 @@ class PreviewRenderer(private val cacheDir: File) : SurfaceHolder.Callback {
     @Volatile
     private var generation = 0
     private var bitmap: Bitmap? = null
-    private val frameDir = File(cacheDir, "preview")
+    /** 预览临时目录（**唯一来源**）：调用方传进来的就是预览目录本身，这里绝不再拼一层 "preview"。 */
+    val frameDir: File = previewDir
     private var grabs = 0L
     private var drops = 0L
     private var lastLatchAt = 0L
@@ -102,9 +103,22 @@ class PreviewRenderer(private val cacheDir: File) : SurfaceHolder.Callback {
         running = false
         generation++
         handler?.removeCallbacksAndMessages(null)
-        thread?.quitSafely()
+        // 先把字段置空、再用局部变量收尾：stop() 可能跑 4.5s，期间用户「关了马上再开」会在
+        // 主线程建新 HandlerThread 并写进 thread/handler —— 旧代绝不能在 join 回来后把它们清掉，
+        // 否则新 tick 链会在 scheduleNext() 的 `handler ?: return` 处默默断掉（开关开着却不刷新）。
+        val t = thread
         thread = null
         handler = null
+        t?.quitSafely()
+        // 等 in-flight 那一拍真正收尾再返回：否则调用方紧接着 wipe 目录，而 daemon 会在
+        // grab 收尾时把 frame.raw 写回来 —— 「退出清不掉 raw」会偶发重现。
+        // 上限必须 **大于** 抓帧超时（PreviewFrameSource.grabTo 用 4000ms），留 500ms 余量。
+        // ⚠ 本方法会阻塞调用线程最长 4500ms → 调用方必须放在 IO 线程，不许在主线程调。
+        try {
+            t?.join(4500)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
         publish("已停止")
     }
 

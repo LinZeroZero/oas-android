@@ -570,16 +570,16 @@ private fun copyToClipboard(context: android.content.Context, text: String) {
  * 1. **默认关** —— 只有用户把开关打开才建 SurfaceView、才起抽帧线程（口径②：进 App 不许抢 CPU/IO）；
  * 2. 打开后才把 `PreviewRenderer` 绑到 SurfaceView 的 holder 并 `start()`；渲染线程自己等 surface 就绪，
  *    未就绪时只丢帧、不抓帧（不白烧 IO）；
- * 3. 关掉/离开界面即释放：`stop()` 停线程 → IO 线程 `PreviewSession.releaseAll()`
- *    → `destroy` + `DisplayInfo{"oas"` 归 0 校验，结果直接显示在界面上（口径④）。
+ * 3. 关掉/离开界面即「释放」= `stop()` 停线程（等 in-flight 那拍收尾）→ IO 线程 `cleanTempAndReport()`
+ *    只清预览目录下的临时 raw 并回显 oas 屏数量，**不 destroy 任何屏**（D-008）。
  */
 @Composable
 private fun PreviewSection(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var on by remember { mutableStateOf(false) }
-    // 只有「本次预览曾开过」才允许在离开界面时释放：oas 屏可能是用户为挂机手动建的，
-    // 打开一次 App 就把它 destroy 掉是事故。
+    // 只有「本次预览曾开过」才在离开界面时做清理（清临时 raw，不碰任何屏）：
+    // 预览自己不建屏，用户挂机用的 oas 屏绝不能被顺手 destroy（D-008）。
     val everStarted = remember { mutableStateOf(false) }
     var stat by remember { mutableStateOf<PreviewRenderer.Stat?>(null) }
     var releaseText by remember { mutableStateOf<String?>(null) }
@@ -588,14 +588,42 @@ private fun PreviewSection(modifier: Modifier = Modifier) {
         PreviewRenderer(File(context.cacheDir, "preview")).also { r -> r.onStat = { s -> stat = s } }
     }
 
-    /** 清预览自己的临时 raw，并回显当前 oas 屏数量（**只读，不销毁**）。 */
+    /**
+     * 清预览自己的临时 raw，并回显当前 oas 屏数量（**只读，不销毁**）。
+     * 目录以 [PreviewRenderer.frameDir] 为准（唯一来源），并**递归**删：旧版本曾把 raw 落在
+     * `cache/preview/preview/` 这层嵌套目录里，只列一层 + 只删文件会永远清不掉。
+     */
     fun cleanTempAndReport(): String {
-        val dir = File(context.cacheDir, "preview")
+        val dir = renderer.frameDir
         var removed = 0
-        runCatching { dir.listFiles()?.forEach { f -> if (f.isFile && f.delete()) removed++ } }
+        var error: String? = null
+        fun wipe(d: File) {
+            d.listFiles()?.forEach { f ->
+                if (f.isDirectory) {
+                    wipe(f)
+                    if (f.delete()) removed++
+                } else if (f.delete()) {
+                    removed++
+                }
+            }
+        }
+        try {
+            // 双保险：只在 app cache 目录内操作。用 canonical 路径 + 分隔符比较，
+            // 避免 `/…/cacheXYZ` 这类裸前缀误命中；出任何异常只回一句原因，不靠删来崩。
+            val cacheCanon = context.cacheDir.canonicalPath + File.separator
+            val dirCanon = dir.canonicalPath
+            if (dirCanon.startsWith(cacheCanon)) {
+                wipe(dir)
+            } else {
+                error = "目录不在 cache 内，已跳过（$dirCanon）"
+            }
+        } catch (t: Throwable) {
+            error = "清理失败: ${t.message ?: t}"
+        }
         val ids = PreviewSession.oasDisplayIds()
+        val tail = if (error == null) "" else "；$error"
         return "预览已停：清临时文件 $removed 个；oas 屏仍 ${ids.size} 块（未销毁" +
-            (if (ids.isEmpty()) "" else "：" + ids.joinToString(",")) + "）"
+            (if (ids.isEmpty()) "" else "：" + ids.joinToString(",")) + "）$tail"
     }
 
     /**
@@ -603,22 +631,29 @@ private fun PreviewSection(modifier: Modifier = Modifier) {
      * 那块屏很可能是用户手动建来挂机的，销毁它就是事故（口径④容易被误读为「必须销毁」）。
      */
     fun stopAndRelease() {
-        renderer.stop()
         scope.launch {
             releaseText = withContext(Dispatchers.IO) {
-                runCatching { cleanTempAndReport() }.getOrElse { "停止时出错: ${it.message ?: it}" }
+                runCatching {
+                    // stop() 会 join 在途那一拍（最长 4500ms，> grab 的 4000ms 超时）
+                    // → 必须整段放 IO，绝不能卡主线程（否则接近 ANR）
+                    renderer.stop()
+                    cleanTempAndReport()
+                }.getOrElse { "停止时出错: ${it.message ?: it}" }
             }
         }
     }
 
-    // 离开界面（返回/退出 App）：同样只停线程 + 清临时文件，绝不 destroy 用户挂机用的 oas 屏
+    // 离开界面（返回/退出 App）：同样只停线程 + 清临时文件，绝不 destroy 用户挂机用的 oas 屏。
+    // stop() 会 join 在途那一拍（最长 4500ms）→ 连它一起放进 IO 协程，onDispose 不阻塞主线程。
     DisposableEffect(Unit) {
         onDispose {
-            renderer.stop()
-            if (!everStarted.value) return@onDispose
+            val started = everStarted.value
             // onDispose 里的 scope 已不可用，用独立的 IO 协程收尾
             CoroutineScope(Dispatchers.IO).launch {
-                runCatching { cleanTempAndReport() }
+                runCatching {
+                    renderer.stop()
+                    if (started) cleanTempAndReport()
+                }
             }
         }
     }

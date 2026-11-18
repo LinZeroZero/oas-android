@@ -7,8 +7,9 @@ import org.onmyoji.oas.android.root.SuShell
 /**
  * BG-35 C-2 · 片③：预览关闭时的**释放与校验**（UI 开关在 `MainActivity.PreviewSection`）。
  *
- * 纪律（BG-35 口径④）：退出预览即释放 —— 停渲染线程（调用方做）→ `destroy` 所有 oas 虚拟屏 →
- * 用 `dumpsys display` 复核 `DisplayInfo{"oas"` **归 0**。
+ * 纪律（取代 D-008 之前的「destroy 归零」口径）：退出预览 = **停线程 + 只清临时 raw**，
+ * **不销毁任何屏** —— 预览自己不建屏（只 `grab` 抓现有的 `oas` 屏），那块屏可能是用户手动建来
+ * 挂机的，destroy 它就是事故。本文件里的 [releaseAll] 只作为「手动销毁」工具保留，预览路径不再调用。
  * 不注册任何自启、不改分辨率/dpi、不停 daemon（daemon 的生死由「停止虚拟屏服务」按钮与
  * `MainActivity.onDestroy` 管，预览只负责自己的那块屏）。
  */
