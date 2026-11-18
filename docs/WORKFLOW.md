@@ -7,11 +7,11 @@
 
 | 角色 | 会话 | 可以做什么 | 绝对不可以做什么 |
 |---|---|---|---|
-| 主 AI（调度） | 当前对话 | 建会话、投递任务、`git diff` 只读评审、汇总、改 `docs/HANDOFF.md` 与 `docs/WORKFLOW.md` | 改 `app/`、`poc/displayserver/` 等代码 |
+| 主 AI（调度） | 当前对话 | 建会话、投递任务、验收 D 的评审结论（不做逐行 review）、汇总、改 `docs/HANDOFF.md` 与 `docs/WORKFLOW.md` | 改 `app/`、`poc/displayserver/` 等代码 |
 | 写手（**唯一代码位，可接力换人**） | `OAS-A 写手（唯一代码位）` 及其接力会话（A2/A3…） | 代码、构建、装机、真机验证、`git commit` | 与另一个写手会话**并行**改代码；换工作区；未经评审直接合 `main` |
 | 诊断 B | `OAS-B 旋转定责（只读）` | 只读命令、整理证据 | 写任何文件、装有副作用的设置 |
 | 文档 C | `OAS-C 文档` | `README.md`、`THIRD_PARTY_NOTICES.md`、`CHANGELOG.md` | `app/`、`HANDOFF.md`、碰设备 |
-| 调研 D（**兼任评审**） | `OAS-D daemon 长存调研` | 联网调研；只读审 `git diff <tag>...HEAD`、按 §5 检查表出 PASS/FAIL | 写代码、碰设备、改任何文件、`git add/commit` |
+| 调研 D（**兼任评审**） | `OAS-D<n> 调研兼评审（…）` | 联网调研；只读审 `git diff <tag>...HEAD`、按 §5 检查表出 PASS/FAIL | 写代码、碰设备、改任何文件、`git add/commit` |
 | 交接包 E | `OAS-E1 交接包（…）` | 写 `docs/handoff/*.md` 的七要素交接包（写手棒 / 主 AI 棒）；可在自己会话里只读查证事实 | `docs/HANDOFF.md`、`docs/WORKFLOW.md`、`app/`、`poc/`、碰设备、`git add/commit` |
 
 **唯一写手原则**：任一时刻只有 **1 个**写手会话持有代码写手位。B/C/D/E 发现要改代码，只交结论给写手。
@@ -109,7 +109,8 @@
 
 **判定**：合并门禁不过 → 不许合入 main；发布门禁不过 → 只能打 `-bN` 预发布 tag，不许打正式版。
 
-## 5. 评审方式（主 AI 做）
+## 5. 评审方式（D 出 PASS/FAIL，主 AI 签发）
+**执行人**：本检查表由 D 执行、按 tag 增量出 PASS/FAIL；主 AI 只验收结论、签发合并，不逐行 review（对齐 §1 四眼原则：D 评审 → 写手修改 → 主 AI 签发）。
 
 **锚点用 tag，不用 `main`。** 因为 feature 分支可能就是从同一个提交切出来的，`main...HEAD` 会显示空 diff。
 
@@ -117,7 +118,7 @@
   例：`git diff v0.2.0-b1...HEAD --stat`
 - 评审关注：是否动了硬约束（分辨率/画布/自启/AGP 版本）、socket 超时是否仍 ≤2s、
   是否又引入 app 侧心跳、异常路径是否仍能落盘、有没有往仓库里塞大二进制
-- 通过才：`git checkout main && git merge --no-ff feat/<主题>` → 打新 tag（如 `v0.2-b2-verified`）
+- 通过才（**主 AI 签发后执行**，D 不碰分支）：`git checkout main && git merge --no-ff feat/<主题>` → 打新 tag（如 `v0.2-b2-verified`）
 - 不通过：只在会话里给意见，**不动分支**
 
 ## 6. 证据留痕
@@ -167,7 +168,7 @@
 1. 主 AI 从最新已验证 tag 切分支：`git checkout -b feat/<主题> <tag>`，通知 A 当前分支名
 2. A 小步实现 + 小步 commit（每次 commit 前跑一次 assembleDebug）
 3. 门禁：需要时跑 cv_selftest 32/32 与四段 4/4，结果写 `docs/evidence/`
-4. 主 AI 按 tag 做 diff 评审（只看增量）
+4. D 按 tag 做 diff 评审、出 PASS/FAIL（只看增量）；主 AI 只验收结论、签发合并
 5. 通过 → `merge --no-ff` 进 main → 打 tag → 改 `docs/HANDOFF.md` 结论
 6. 不通过 → 留在 feat 分支继续修，历史不污染 main
 
