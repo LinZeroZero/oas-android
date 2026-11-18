@@ -30,6 +30,7 @@
 
 - `main` 受保护（含 admin 也绕不过）：只能 **分支 → PR → 门禁绿 → 用户签发 → squash 合并**。
 - push 前过 `bash tools/gate.sh --static`；CI 必需检查 `static-gate`。
+- **改了 `app/` 或 `poc/` 就必须同时更新 `PROGRESS.md`**（gate 第⑥项强制；确无状态变化时用 `OAS_SKIP_PROGRESS_CHECK=1` 并在 PR 里说明）。
 - 子会话开工顺序：**先建产物文件骨架，再补内容**；没核到的写 `TODO(未核)`，不许为一行号回头重读全文。
 - 子会话回执 **≤5 行**（改动 / 判据 / 证据 / 下一步 / 阻塞），详情写 `/tmp/outbox/<角色>-<任务>.md`。
 - **主 AI 不 `read_messages` 读子会话**（会把 think 链灌进上下文），只看 outbox 文件 + `agent_status`。
