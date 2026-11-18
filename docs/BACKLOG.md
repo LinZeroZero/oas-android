@@ -11,6 +11,12 @@
   - 方向候选：把 phase driver 前移到 daemon（`kb run <a> <b> <c> <reportPath>`），app 只触发+显示
   - 决策：**ADR-0001 Accepted**（`docs/adr/0001-daemon-owns-automation.md`），实现拆成 BG-17~BG-21
 
+- [ ] **BG-34 虚拟屏上的游戏 activity 是 PAUSED，`input -d <displayId>` 不投递**（阻塞 P0-A 的 D 段判据）
+  - 实测（2026-11-18，证据 `docs/evidence/20261118-1520-BG-32-p0a-precondition.md` §4B）：display 38 `mCurrentFocus=null`、`mFocusedApp=null`；游戏 `Task{#933} visible=false visibleRequested=false`、`mLastPausedActivity=.Client`；`tap 800 530`／`keyevent 4`／`tap 640 120` 三次探针均无像素变化、`frames` 恒 544
+  - 影响：P0-A 的 D 段「唤醒 + 定向点击」无法执行；也无法远程点掉游戏内弹窗
+  - 归属：写手（先只读定位：是 display 焦点问题 / activity 生命周期问题 / 还是 `input -d` 在本机不可靠）+ D 复核
+  - ⚠ 本轮实测与「PoC 期 `input -d <displayId> tap` 可用」的旧记录冲突（旧记录出处待核）→ **以本轮实测为准**，需重新定位，不得直接引用旧结论
+
 - [ ] **BG-02 C 段（息屏 60s）从未真正测过**
   - 因 BG-01 连带阻塞；daemon 心跳在后台无空洞（645 拍/644s/maxGap 1004ms）只是旁证，不是 C 段数据
   - **测法按 ADR-0001 §4 改**：先确认游戏 `displayId:19` 的 SCREEN_BRIGHT_WAKE_LOCK 已释放，再同记 `maxGap` 与 `suspend_stats/success` 前后差值
@@ -43,9 +49,16 @@
 
 - [ ] **BG-09 B 已给旋转结论，但 logcat 无写入记录，定责仍为「证据不足」**
 - [ ] **BG-10 C 的 README / THIRD_PARTY_NOTICES 改动未复核**
-- [ ] **BG-11 D 的 daemon 长存调研结论未回传**
+- [x] **BG-11 D 的 daemon 长存调研结论未回传** —— 关闭依据：该调研（`docs/research/20261116-android-background-keepalive.md`）**从未入库**，结论以入库文档为准，处置见 **BG-33**
 
 ## 五、流程落地实况（P1）
+
+- [x] **BG-33 旧 D 自述的两份 `docs/research/*` 调研从未入库** —— 处置（主 AI，2026-11-18）：**认丢、不重做**
+  - 跟丢的两份：`docs/research/20261115-android-vdisplay-background.md`、`docs/research/20261116-android-background-keepalive.md`
+  - 实查（2026-11-18，main = `6fe46aa`）：`docs/research/` 目录**不存在**；`git log --all -- docs/research` 空；`git log --all --diff-filter=A` 里 `research|vdisplay|keepalive` 只命中 `KeepAlivePoc.kt` / `KeepAliveService.kt` / `poc/frames/vdisplay_*.png` → 从未入库，不是被删
+  - 不重做的依据：两份主题的结论已落在入库文档——虚拟屏／出帧／freezer 判定见 `docs/BACKGROUND.md` §二/§三/§五/§七（含 AOSP 14 两条事实与 7 项判据实测）；后台保活见同文件 §九 第 1 条（Python 识别线程仍会被 freezer 冻 → 前台服务 + WakeLock）与 `docs/PORTING.md` §6；实现侧见 `app/src/main/java/org/onmyoji/oas/android/service/KeepAliveService.kt`
+  - 若日后某条结论必须引「原文」：先查上述文件；确实缺才派 D 重做（联网重写，两份各开一个 PR，不得与代码 PR 混）
+  - 归属：主 AI（记账）；重做时 → D
 
 - [ ] **BG-12 用户的 classic PAT 仍未 revoke（安全，最高优先）**
   - 该 token 已出现在对话中，并已用于建仓 / 推送 / 开 PR / 改可见性
@@ -130,4 +143,8 @@
     - **真机坑（已修）**：Android `/system/bin/sh` 是 mksh，**算术 32 位**；`hts/1000`（13 位 ms）先被截成负数，`age≈1.79e9`，快路恒不命中。改为 `${#hts}` 校 13 位 + `hsec=${hts%???}` 字符串截秒 —— 以后任何 13 位毫秒都不能进 `$(( ))`
     - **已验证（亮屏不熄屏冒烟，两轮）**：① 3 分钟轮 `frames 505→5289` 递增但**快路 0 命中**（正是它暴露了 32 位问题）；② 90s 轮 `frames 355→2474`、**每个采样拍都出数**（快路生效，节流仅 3 拍）；两轮自停都正常、CSV 恒 15 列。证据 `docs/evidence/20261117-2339-BG-32-frames-smoke.md`、`docs/evidence/20261117-2344-BG-32-hbframes-smoke.md`
     - **仍待**：正式 14 分钟真熄屏长跑（A 前台 120s + B 回桌面 60s + C 熄屏 600s + D 唤醒点击 15s）= PASS 路径唯一验收口径；「首拍 pid=0 即 FAIL」是否放宽为前置启动期豁免，等长跑数据再定（不提前动判据）
+  - **2026-11-18 增量（前置搭建实测，证据 `docs/evidence/20261118-1520-BG-32-p0a-precondition.md`）**：载体按文档序列搭起来了（daemon `21114`、虚拟屏 `oas` = displayId `38`、游戏拉上 38），但**长跑仍不能开**：
+    - ①游戏停在「客户端版本已更新，需下载额外资源 **27.7MB**，建议 wifi」静态弹窗（grab 转图读出；本机无 Wi‑Fi、默认 `MOBILE NR`）→ 画面不动，`frames` 冻在 544（292→544 后无增长；`grab` 三次同帧 `mean=126.39`、`blackRatio=0.0000`）→ 冻结是**结果**，不是出帧通路坏
+    - ②display 38 上游戏 `Task{#933}` = `visible=false visibleRequested=false`、`mLastPausedActivity=.Client`、`mCurrentFocus=null`；三次输入探针（`tap 800 530` / `keyevent 4` / `tap 640 120`）均无像素变化、`frames` 恒 544 → **`input -d 38` 未投递**，D 段「唤醒 + 定向点击」**当前不可验** → 见 **BG-34**
+    - 本轮**未熄屏、未跑 `hang_check start`、未点「确定」**（27.7MB 走移动数据，需用户点头）
   - 归属：A5（代码）/ D（评审）/ 主 AI（签发）/ 用户（真机长跑配合）
