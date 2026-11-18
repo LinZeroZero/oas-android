@@ -58,6 +58,7 @@
   - 实查（2026-11-18，main = `6fe46aa`）：`docs/research/` 目录**不存在**；`git log --all -- docs/research` 空；`git log --all --diff-filter=A` 里 `research|vdisplay|keepalive` 只命中 `KeepAlivePoc.kt` / `KeepAliveService.kt` / `poc/frames/vdisplay_*.png` → 从未入库，不是被删
   - 不重做的依据：两份主题的结论已落在入库文档——虚拟屏／出帧／freezer 判定见 `docs/BACKGROUND.md` §二/§三/§五/§七（含 AOSP 14 两条事实与 7 项判据实测）；后台保活见同文件 §九 第 1 条（Python 识别线程仍会被 freezer 冻 → 前台服务 + WakeLock）与 `docs/PORTING.md` §6；实现侧见 `app/src/main/java/org/onmyoji/oas/android/service/KeepAliveService.kt`
   - 若日后某条结论必须引「原文」：先查上述文件；确实缺才派 D 重做（联网重写，两份各开一个 PR，不得与代码 PR 混）
+  - **2026-11-18 补记**：`docs/research/` 目录已在本日建立（首个文件 `docs/research/20261118-inapp-virtualdisplay-preview.md`，属 **BG-35** 调研）→ **跟丢的那两份仍不重做**，本条结论不变；日后新增 research 文件一律按「谁调研谁给结论、主 AI 落盘」办
   - 归属：主 AI（记账）；重做时 → D
 
 - [ ] **BG-12 用户的 classic PAT 仍未 revoke（安全，最高优先）**
@@ -148,3 +149,21 @@
     - ②display 38 上游戏 `Task{#933}` = `visible=false visibleRequested=false`、`mLastPausedActivity=.Client`、`mCurrentFocus=null`；三次输入探针（`tap 800 530` / `keyevent 4` / `tap 640 120`）均无像素变化、`frames` 恒 544 → **`input -d 38` 未投递**，D 段「唤醒 + 定向点击」**当前不可验** → 见 **BG-34**
     - 本轮**未熄屏、未跑 `hang_check start`、未点「确定」**（27.7MB 走移动数据，需用户点头）
   - 归属：A5（代码）/ D（评审）/ 主 AI（签发）/ 用户（真机长跑配合）
+
+## 七、新需求立项（P1，先立项再排期）
+
+- [ ] **BG-35 App 内实时预览虚拟屏（in-app live preview）** —— 新需求，2026-11-18 立项，**未开工**
+  - **来源**：用户 2026-11-18 提供 `https://github.com/Shinarin/ALAS-AOS` + 内嵌虚拟屏截图，明确「这个项目就可以直接在软件里显示虚拟屏」；计划模式拍板口径 **q1=(b)「要 OAS 也能在 App 里内嵌实时预览」**
+  - **现状实查（2026-11-18，main = `e4d3e3e`）**：`app/src/main` 全 28 个文件 grep `SurfaceView|TextureView|SurfaceTexture|ImageReader` **命中 0** → App 内**零**预览能力；当前唯一出图路径是 daemon `grab` → raw → 转 PNG（离线单帧，不是实时）
+  - **已有基础**：daemon 侧 `ImageReader.newInstance(w,h,RGBA_8888,3)` 早已在跑（`poc/displayserver/.../DisplayEngine.java:100-101`），`grab` 就在读它 → **预览不需要重建捕获通路**，只缺「帧 → App → 显示」这一段
+  - **调研文档**：`docs/research/20261118-inapp-virtualdisplay-preview.md`（ALAS-AOS 通路 / AOSP 七 flag 语义与强制前置 / 注入路径差异 / 许可证 / 未核到清单）
+  - **与 BG-34 的关系**：BG-34 是「能不能操作」（不可触 + activity PAUSED），BG-35 是「能不能看见」。两者共享 flags 面，但**验收口径独立**，任一通过不代表另一个通过，不得互相勾掉
+  - **四条验收口径（立项即锁定，改动须用户点头）**：
+    1. App 内预览区显示 `oas` 虚拟屏，**肉眼可见画面在动**
+    2. 预览期间**主屏可正常使用**，不掉帧、不黑屏
+    3. 预览更新时 daemon `stats` 的 **`frames` 单调增长**
+    4. **不引入开机自启**、不改分辨率/系统设置、退出预览即释放（收工 `DisplayInfo{"oas"` 归 0）
+  - **归途**：主 AI 立项/验收 → 写手实现（唯一代码位 A6）→ D 4-eyes 评审 → 真机验收（熄屏类须用户定时点、收工先确认铃响再亮屏再拉 Operit 前台）
+  - **排期候选（主 AI 建议，未拍板）**：**C-1** 只改 flags 重打 jar（判据：`input -d <id> tap` 让 `frames` 变化且 `mCurrentFocus` 非 null）→ **C-2** App 内预览（判据＝上面四条）→ **C-3** 预览与主屏共存调优（含与 BG-22 `setSurface(null)` 的冲突：空 Surface 即 `STATE_OFF`，预览中不可停渲）；每项一个 PR，不合并铺开
+  - **约束**：ALAS-AOS 为 **AGPL-3.0**，**只按 AOSP 常量名自行实现，不移植其任何文件**；flag 数值一律写常量名，不写魔数（D 报的 `0x1fd47` 是推算且与按位累加不符）
+  - 归属：主 AI（立项/排期/验收）→ 写手（实现）→ D（评审）
