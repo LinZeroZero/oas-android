@@ -1,6 +1,6 @@
 # PROGRESS.md — 位置（干到哪了、下次从哪接）
 
-> 更新时间：**2026-11-18 20:54** ｜ 只写「现在」；历史看 `git log` 与 `docs/HANDOFF.md`。
+> 更新时间：**2026-11-18 20:54** ｜ **上限 40 行**：只写「现在」，历史交 `git log`。
 
 ## 当前
 - `main` = **最新合并提交**（要具体 sha 就 `git log --oneline -1`；本文件不记，见 `DECISIONS.md` D-013）；本地与远端都只剩 `main`；`git status` 干净

@@ -1,7 +1,7 @@
 # DECISIONS.md — 决定（为什么这么定、怎么退回去）
 
-> **只增不减**。推翻旧决定 = 追加一条新的并写明「取代 D-xxx」，不许改历史。
-> 说明：**D-001 ~ D-010 是 2026-11-18 追记**（据 `docs/BACKLOG.md`、`docs/HANDOFF.md` 里已有实证结论整理），D-011 起为当轮新增。
+> **只增不减**；每条 **1 行**（决定 / 理由 / 退路），理由超一句就下沉 `docs/`。推翻旧决定 = 追加新的并写「取代 D-xxx」，不改历史。
+> D-001 ~ D-010 为 2026-11-18 追记（据 `BACKLOG`/`HANDOFF` 已有实证整理），D-011 起为当轮新增。
 
 | # | 日期 | 决定 | 理由 | 怎么退 |
 |---|---|---|---|---|
@@ -18,4 +18,5 @@
 | D-011 | 11-18 | **`server.jar` 不随意重打**（当前 29,253 B）；要重打必须先落一条决定 | jar 是 daemon 唯一载体，重打会同时动 flags/协议，风险外溢到所有验收 | 走 C-1 时需要，届时新增一条 |
 | D-012 | 11-18 | 引入 **`AGENTS.md` / `PROGRESS.md` / `DECISIONS.md`** 三份外置状态文件，取代「靠 439 行 `HANDOFF.md` 承载当前状态」 | 状态与历史混在一起会腐坏（§二 至今写着 jar 16,037 B）；压缩后第一份被丢的就是最早设定 | 旧文件不删，降级为历史/全量资料 |
 | D-013 | 11-18 | `PROGRESS.md` **不记具体 commit sha**：写「最新合并提交」+ 最近 2~3 个 PR 号 | 每合并一个 PR 就要改 sha，改不动就腐坏（D-012 刚合完就发生了一次）；PR 号比 sha 稳定且可 grep | 要精确 sha 时用 `git log --oneline -1` |
-| D-014 | 11-18 | `tools/gate.sh` 增第 ⑥ 项：**改 `app/` 或 `poc/` 必须同时改 `PROGRESS.md`**，否则 `GATE: FAIL progress-not-updated` | 只写文档不写门禁，状态照样会再腐坏；靠自觉必然失效 | 逃生阀 `OAS_SKIP_PROGRESS_CHECK=1`；若要更严可改 `HEAD~1..HEAD` 逐 commit 检查 |
+| D-014 | 11-18 | `tools/gate.sh` 增第 ⑥ 项：**改 `app/` 或 `poc/` 必须同时改 `PROGRESS.md`**，否则 `GATE: FAIL progress-not-updated` | 只写文档不写门禁，状态照样会再腐坏；靠自觉必然失效 | 逃生阀 `OAS_SKIP_PROGRESS_CHECK=1` |
+| D-015 | 11-18 | 三份文件**瘦身纪律**：AGENTS ≤50 / PROGRESS ≤40 / 每条决定 1 行；只留结论、原因下沉 `docs/`、过时即删、新增一条删一条；**不可逆损失类**（boot/vbmeta、装包路径、权限、jar 字节）例外 | 规则越长越没人遵守；过时规则比没有规则更糟 | 超限由 `tools/gate.sh` 第⑦项 `wc -l` 拦（待加） |
