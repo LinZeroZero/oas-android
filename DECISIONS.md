@@ -17,3 +17,5 @@
 | D-010 | 11-18 | Q5 结论：**`input -d` 不是不可靠**；tap 丢在 `InputDispatcher`「no touchable window」，key 丢在「no focused window」 | AOSP 源码实证（`InputDispatcher.cpp:2526-2530` / `:2313-2318`），全文无 `INVALID_DISPLAY` | 直接后果：C-1 的 `SUPPORTS_TOUCH` 对 tap 支无效，只可能影响 key 支 |
 | D-011 | 11-18 | **`server.jar` 不随意重打**（当前 29,253 B）；要重打必须先落一条决定 | jar 是 daemon 唯一载体，重打会同时动 flags/协议，风险外溢到所有验收 | 走 C-1 时需要，届时新增一条 |
 | D-012 | 11-18 | 引入 **`AGENTS.md` / `PROGRESS.md` / `DECISIONS.md`** 三份外置状态文件，取代「靠 439 行 `HANDOFF.md` 承载当前状态」 | 状态与历史混在一起会腐坏（§二 至今写着 jar 16,037 B）；压缩后第一份被丢的就是最早设定 | 旧文件不删，降级为历史/全量资料 |
+| D-013 | 11-18 | `PROGRESS.md` **不记具体 commit sha**：写「最新合并提交」+ 最近 2~3 个 PR 号 | 每合并一个 PR 就要改 sha，改不动就腐坏（D-012 刚合完就发生了一次）；PR 号比 sha 稳定且可 grep | 要精确 sha 时用 `git log --oneline -1` |
+| D-014 | 11-18 | `tools/gate.sh` 增第 ⑥ 项：**改 `app/` 或 `poc/` 必须同时改 `PROGRESS.md`**，否则 `GATE: FAIL progress-not-updated` | 只写文档不写门禁，状态照样会再腐坏；靠自觉必然失效 | 逃生阀 `OAS_SKIP_PROGRESS_CHECK=1`；若要更严可改 `HEAD~1..HEAD` 逐 commit 检查 |

@@ -1,12 +1,12 @@
 # PROGRESS.md — 位置（干到哪了、下次从哪接）
 
-> 更新时间：**2026-11-18 20:31** ｜ 只写「现在」；历史看 `git log` 与 `docs/HANDOFF.md`。
+> 更新时间：**2026-11-18 20:54** ｜ 只写「现在」；历史看 `git log` 与 `docs/HANDOFF.md`。
 
 ## 当前
-- `main` = `fe916f9`（PR #41）；本地与远端都只剩 `main`；`git status` 干净
+- `main` = **最新合并提交**（要具体 sha 就 `git log --oneline -1`；本文件不记，见 `DECISIONS.md` D-013）；本地与远端都只剩 `main`；`git status` 干净
 - `server.jar` = **29,253 B**（未重打）
-- 最近合并：**PR #40** C-2 App 内实时预览 `a531ba4`；**PR #41** 口径④修正 + C-2 入账 `fe916f9`
-- 可分发 APK（本轮编译）：`app/build/outputs/apk/debug/app-debug.apk` = **48,583,631 B**；`dist/` 里两个包是旧的，未更新
+- 最近合并：**PR #42** 状态三件套 + gate 第⑥项；**PR #41** 口径④修正；**PR #40** C-2 App 内实时预览
+- 可分发 APK（C-2 那次编译）：`app/build/outputs/apk/debug/app-debug.apk` = **48,583,631 B**；`dist/` 里两个包是旧的，未更新
 
 ## 在飞
 - **无**。所有 feature/docs 分支已删除，无未评审代码在跑。
