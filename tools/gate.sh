@@ -10,7 +10,7 @@
 # 每项固定打印一行 `[n/8] OK|SKIP|FAIL ...`。
 # ⑥ 状态同步：改了 app/ 或 poc/ 必须同时改 PROGRESS.md（规矩见 AGENTS.md）。
 # ⑦ 状态文件行数上限（AGENTS ≤50 / PROGRESS ≤40；见 DECISIONS.md D-015）。
-# ⑧ PROGRESS.md 不许写死过期 PR 号：文中每个 `#<数字>` 必须能在 `git log --oneline -100` 里找到（见 D-017）。
+# ⑧ PROGRESS.md 不许写死过期 PR 号：文中每个 `PR #<数字>` 必须能在 `git log --all --oneline` 里找到（见 D-017）。
 #
 # 注意：故意不用 `set -e` —— 一项失败也要把后面几项的结论打出来，
 #       否则「fail 在一半就退出」会让人误以为其他项是通过的。
@@ -362,23 +362,29 @@ else
 fi
 
 # ⑧ PROGRESS.md 不许写死过期 PR 号（D-017）
-# 判据：PROGRESS.md 里出现的每个 `#<数字>` 必须能在 `git log --oneline -100` 里找到；
-# 一个号都没写 → OK；git 不可用/不在仓库内 → SKIP（门禁自己绝不把 CI 搞红）。
+# 判据：PROGRESS.md 里出现的每个 `PR #<数字>` 必须能在 `git log --all --oneline` 里找到；
+# 一个号都没写 → OK；git 不可用 / 不在仓库内 / 浅克隆 → SKIP（门禁自己绝不把 CI 搞红）。
 if [ "${OAS_SKIP_STATE_PR_CHECK:-}" = "1" ]; then
     echo "[8/8] SKIP  OAS_SKIP_STATE_PR_CHECK=1"
 else
     if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
-        LOG=$(git log --oneline -100 2>/dev/null)
-        STALE=""
-        # 用边界正则避免 #4 误匹配 #40（否则过期号会被当成存在 → 假 OK）
-        for n in $(grep -oE '#[0-9]+' PROGRESS.md 2>/dev/null | tr -d '#' | sort -u); do
-            printf '%s' "$LOG" | grep -qE "#$n([^0-9]|$)" || STALE="$STALE #$n"
-        done
-        if [ -n "$STALE" ]; then
-            echo "[8/8] FAIL  PROGRESS 写了 git log 里找不到的 PR 号：$STALE"
-            fail "state-pr-stale"
+        # 浅克隆没有历史可查，「查不到」不等于「号过期」→ 宁可 SKIP 也不误报
+        if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+            echo "[8/8] SKIP  浅克隆仓库（无历史可查）"
         else
-            echo "[8/8] OK    PROGRESS 未写死过期 PR 号"
+            LOG=$(git log --all --oneline 2>/dev/null)
+            STALE=""
+            # 抓取端要求 `PR #<数字>` 前缀，避免把条目编号、代码块里的 #123 当 PR 号；
+            # 匹配端用边界正则避免 #4 误匹配 #40（否则过期号会被当成存在 → 假 OK）
+            for n in $(grep -oE 'PR *#[0-9]+' PROGRESS.md 2>/dev/null | grep -oE '[0-9]+' | sort -u); do
+                printf '%s' "$LOG" | grep -qE "#$n([^0-9]|$)" || STALE="$STALE #$n"
+            done
+            if [ -n "$STALE" ]; then
+                echo "[8/8] FAIL  PROGRESS 写了 git log 里找不到的 PR 号：$STALE"
+                fail "state-pr-stale"
+            else
+                echo "[8/8] OK    PROGRESS 未写死过期 PR 号"
+            fi
         fi
     else
         echo "[8/8] SKIP  不在 git 仓库内"
