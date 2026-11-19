@@ -40,6 +40,7 @@
 - `main` 受保护（含 admin 也绕不过）：只能 **分支 → PR → 门禁绿 → 用户签发 → squash 合并**。
 - push 前过 `bash tools/gate.sh --static`；CI 必需检查 `static-gate`。
 - **改了 `app/` 或 `poc/` 就必须同时更新 `PROGRESS.md`**（gate 第⑥项强制；确无状态变化时用 `OAS_SKIP_PROGRESS_CHECK=1` 并在 PR 里说明）。
+- **`PROGRESS.md` 不写死 PR 号/sha**：读「最近合并」一律 `git log --oneline -3` 现查（D-013、D-017）；写了就必须能在 `git log` 找到，否则 gate 第⑧项 FAIL。
 - 子会话：**先建产物骨架再补内容**（没核到写 `TODO(未核)`）；回执 **≤5 行**，详情写 `/tmp/outbox/<角色>-<任务>.md`；只用主工作区**绝对路径**，不许另建副本。
 - **主 AI 不 `read_messages` 读子会话**（会灌 think 链进上下文），只看 outbox + `agent_status`。
 
