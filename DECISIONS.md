@@ -20,3 +20,4 @@
 | D-013 | 11-18 | `PROGRESS.md` **不记具体 commit sha**：写「最新合并提交」+ 最近 2~3 个 PR 号 | 每合并一个 PR 就要改 sha，改不动就腐坏（D-012 刚合完就发生了一次）；PR 号比 sha 稳定且可 grep | 要精确 sha 时用 `git log --oneline -1` |
 | D-014 | 11-18 | `tools/gate.sh` 增第 ⑥ 项：**改 `app/` 或 `poc/` 必须同时改 `PROGRESS.md`**，否则 `GATE: FAIL progress-not-updated` | 只写文档不写门禁，状态照样会再腐坏；靠自觉必然失效 | 逃生阀 `OAS_SKIP_PROGRESS_CHECK=1` |
 | D-015 | 11-18 | 三份文件**瘦身纪律**：AGENTS ≤50 / PROGRESS ≤40 / 每条决定 1 行；只留结论、原因下沉 `docs/`、过时即删、新增一条删一条；**不可逆损失类**（boot/vbmeta、装包路径、权限、jar 字节）例外 | 规则越长越没人遵守；过时规则比没有规则更糟 | 超限由 `tools/gate.sh` 第⑦项 `wc -l` 拦（待加） |
+| D-016 | 11-19 | 检索纪律入 `AGENTS.md §3`（先定位后读 / 只读命中±30 行 / 输出落文件再 grep / 全局问题交子会话 / 同工具连败 2 次换路），并把原「命令坑」行折进第 2 条 | 检索纪律此前只存在于对话、从未落盘（grep 全空），压缩后必丢 | 若仍失效，再评估机器化（如禁止对大文件直接 read_file） |

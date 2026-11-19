@@ -28,15 +28,21 @@
 5. **flag 写常量名不写魔数**；AGPL 项目（ALAS-AOS）只借鉴思路，不移植代码。
 6. **锁只用 PARTIAL 语义**，不抢 `SCREEN_BRIGHT`。
 
-## 3. 流程硬约束
+## 3. 检索纪律（先定位，后读）
+
+- **先定位再读**：要「哪里有」用 `grep -rn` / `find` 出清单，不读全文；要读只读命中行 **±30 行**（`read_file_part`）。
+- **输出先落文件**：命令输出写文件后 `grep` 关键行，不把原始日志搬进对话；`git` 一律 `git --no-pager … | cat`（裸 `git diff` 进 less 锁死会话）；`>>` 追加前先确认文件末尾有换行（否则新内容会拼到上一行）。
+- **无关键词可搜**的全局问题（架构、耦合）→ 交子会话读完只回结论，或先落一份说明文件。
+- **同一工具连失败 2 次就换路**（例：`visit_web` 拉大文件返回 null → `curl` 落盘再 grep）。
+
+## 4. 流程硬约束
 
 - `main` 受保护（含 admin 也绕不过）：只能 **分支 → PR → 门禁绿 → 用户签发 → squash 合并**。
 - push 前过 `bash tools/gate.sh --static`；CI 必需检查 `static-gate`。
 - **改了 `app/` 或 `poc/` 就必须同时更新 `PROGRESS.md`**（gate 第⑥项强制；确无状态变化时用 `OAS_SKIP_PROGRESS_CHECK=1` 并在 PR 里说明）。
 - 子会话：**先建产物骨架再补内容**（没核到写 `TODO(未核)`）；回执 **≤5 行**，详情写 `/tmp/outbox/<角色>-<任务>.md`；只用主工作区**绝对路径**，不许另建副本。
 - **主 AI 不 `read_messages` 读子会话**（会灌 think 链进上下文），只看 outbox + `agent_status`。
-- 命令坑：`terminal` 里跑裸 `git diff` 会进 less **锁死会话**，一律 `git --no-pager … | cat`。
 
-## 4. 真机实验收工定序（缺一不算完）
+## 5. 真机实验收工定序（缺一不算完）
 
 **先确认真响铃 → 再亮屏 → 再把 Operit 拉回前台**；销毁所有 `oas-*` 虚拟屏、停 daemon 与游戏、`accelerometer_rotation` 复位 0、清 `/data/local/tmp` 本轮临时文件。
