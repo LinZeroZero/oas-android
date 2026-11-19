@@ -370,8 +370,9 @@ else
     if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
         LOG=$(git log --oneline -100 2>/dev/null)
         STALE=""
+        # 用边界正则避免 #4 误匹配 #40（否则过期号会被当成存在 → 假 OK）
         for n in $(grep -oE '#[0-9]+' PROGRESS.md 2>/dev/null | tr -d '#' | sort -u); do
-            printf '%s' "$LOG" | grep -q "#$n" || STALE="$STALE #$n"
+            printf '%s' "$LOG" | grep -qE "#$n([^0-9]|$)" || STALE="$STALE #$n"
         done
         if [ -n "$STALE" ]; then
             echo "[8/8] FAIL  PROGRESS 写了 git log 里找不到的 PR 号：$STALE"
