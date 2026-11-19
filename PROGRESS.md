@@ -5,7 +5,7 @@
 ## 当前
 - `main` = 最新合并提交（要具体 sha 就 `git log --oneline -1`；本文件不记，见 D-013）；本地与远端都只剩 `main`；`git status` 干净
 - `server.jar` = **29,253 B**（未重打，md5 `a7830c84…`）
-- 最近合并：**PR #48**（状态同步 + 写手棒包换新 BG-34 + 指针切 2335 + A7 对接）；**PR #47** BG-32 P0-A 结案；**PR #46** docs 收口
+- 最近合并：**现查 `git log --oneline -3`**（本文件不写 PR 号/sha，见 D-013、D-017）
 - 可分发 APK：`app/build/outputs/apk/debug/app-debug.apk`（字节以 `ls -l` 为准）；`dist/` 两个包是旧的，未更新
 - **BG-32 P0-A 已结案**、**BG-35 C-2 已结案**（证据 `docs/evidence/20261118-2300-*` 与 `20261118-2235-*`）
 
