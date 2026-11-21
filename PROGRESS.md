@@ -12,7 +12,7 @@
 ## BG-34 结论（2026-11-19 两轮实测 + 两次 4-eyes）
 - **原前提「`input -d` 不投递」不成立**：motion 投递成功（`TouchStatesByDisplay` 出现该窗口 target、`firstDownTimeInTarget` 非零，全程无 `Dropping`）
 - 真实剩余问题：**key 在无 focused window 的屏上被丢**（AOSP `:2313`）→ C-1（`TRUSTED|OWN_FOCUS`）降级为「仅 key 需要」的可选项
-- 旧证据 `frames 恒 544` 归因 = **真冻结**（采集链路健康：frames 单调涨、copies 同步、md5 逐帧不同）
+- 旧证据 `frames 恒 544` 归因（推断）= **真冻结**（采集链路健康：frames 单调涨、copies 同步、md5 逐帧不同）
 - ⚠ **判据纠正**：`frames` 与**整帧 md5 都不能当点击生效判据**（静止画面仍有 ~1.2% 像素在动）；可观测判据见 `/tmp/outbox/A7-step1-observable.md` §结论②
 
 ## 在飞

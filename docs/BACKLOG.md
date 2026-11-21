@@ -14,6 +14,7 @@
 - [x] **BG-34 虚拟屏 click 判据（原题「游戏 activity PAUSED、`input -d` 不投递」已被推翻）**
   - ① 结论 motion 通、仅 key 需焦点（详见 D-020）
   - ② 证据 → docs/evidence/20261121-2201-BG-34-closeout.md
+  - ③ 解除对 P0-A D 段（唤醒+定向点击）的阻塞
 
 - [ ] **BG-02 C 段（息屏 60s）从未真正测过**
   - 因 BG-01 连带阻塞；daemon 心跳在后台无空洞（645 拍/644s/maxGap 1004ms）只是旁证，不是 C 段数据
