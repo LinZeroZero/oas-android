@@ -11,11 +11,9 @@
   - 方向候选：把 phase driver 前移到 daemon（`kb run <a> <b> <c> <reportPath>`），app 只触发+显示
   - 决策：**ADR-0001 Accepted**（`docs/adr/0001-daemon-owns-automation.md`），实现拆成 BG-17~BG-21
 
-- [ ] **BG-34 虚拟屏上的游戏 activity 是 PAUSED，`input -d <displayId>` 不投递**（阻塞 P0-A 的 D 段判据）
-  - 实测（2026-11-18，证据 `docs/evidence/20261118-1520-BG-32-p0a-precondition.md` §4B）：display 38 `mCurrentFocus=null`、`mFocusedApp=null`；游戏 `Task{#933} visible=false visibleRequested=false`、`mLastPausedActivity=.Client`；`tap 800 530`／`keyevent 4`／`tap 640 120` 三次探针均无像素变化、`frames` 恒 544
-  - 影响：P0-A 的 D 段「唤醒 + 定向点击」无法执行；也无法远程点掉游戏内弹窗
-  - 归属：写手（先只读定位：是 display 焦点问题 / activity 生命周期问题 / 还是 `input -d` 在本机不可靠）+ D 复核
-  - ⚠ 本轮实测与「PoC 期 `input -d <displayId> tap` 可用」的旧记录冲突（旧记录出处待核）→ **以本轮实测为准**，需重新定位，不得直接引用旧结论
+- [x] **BG-34 虚拟屏 click 判据（原题「游戏 activity PAUSED、`input -d` 不投递」已被推翻）**
+  - ① 结论 motion 通、仅 key 需焦点（详见 D-020）
+  - ② 证据 → docs/evidence/20261121-2201-BG-34-closeout.md
 
 - [ ] **BG-02 C 段（息屏 60s）从未真正测过**
   - 因 BG-01 连带阻塞；daemon 心跳在后台无空洞（645 拍/644s/maxGap 1004ms）只是旁证，不是 C 段数据

@@ -1,6 +1,6 @@
 # PROGRESS.md — 位置（干到哪了、下次从哪接）
 
-> 更新时间：**2026-11-19 23:20（CST）** ｜ **上限 40 行**：只写「现在」，历史交 `git log`。
+> 更新时间：**2026-11-21 22:01** ｜ **上限 40 行**：只写「现在」，历史交 `git log`。
 
 ## 当前
 - `main` = 最新合并提交（要具体 sha 就 `git log --oneline -1`；本文件不记，见 D-013）；本地与远端都只剩 `main`；`git status` 干净
@@ -16,10 +16,10 @@
 - ⚠ **判据纠正**：`frames` 与**整帧 md5 都不能当点击生效判据**（静止画面仍有 ~1.2% 像素在动）；可观测判据见 `/tmp/outbox/A7-step1-observable.md` §结论②
 
 ## 在飞
-- **无在飞 PR**
+- **1 个在飞 PR，等用户签发**
 
 ## 下一步（按序做）
-1. **BG-34 结案文档**：evidence + `DECISIONS.md` 追加「motion 通、仅 key 需焦点」+ `BACKLOG` 状态行（**未落**）
+1. **BG-34 结案文档**：evidence + `DECISIONS.md` 追加「motion 通、仅 key 需焦点」+ `BACKLOG` 状态行（**已落**，见 DECISIONS D-020）
 2. **模板漂移量化**：`tools/tplmatch.py`（proot 有 numpy+PIL、无 cv2）+ 用户截图 `1234.jpg` 作基线
 3. **引擎烟测（L2 最大关）**：让 `vendor/oas` 在 APK 内 import + 跑一个纯识别步骤，暴露真实缺哪些依赖
 
