@@ -7,9 +7,10 @@
 #                                 # 只跑 bash -n tools/*.sh + ⑤硬约束/AGP
 #
 # 末行固定输出 `GATE: PASS` 或 `GATE: FAIL <项名>`，便于直接当提交前的判据。
-# 每项固定打印一行 `[n/7] OK|SKIP|FAIL ...`。
+# 每项固定打印一行 `[n/8] OK|SKIP|FAIL ...`。
 # ⑥ 状态同步：改了 app/ 或 poc/ 必须同时改 PROGRESS.md（规矩见 AGENTS.md）。
-# ⑦ 状态文件行数上限（AGENTS ≤50 / PROGRESS ≤40；见 DECISIONS.md D-015）。
+# ⑦ 状态文件上限：AGENTS ≤50 行且 ≤5 KB / PROGRESS ≤40 行且 ≤4 KB（见 DECISIONS.md D-015、D-019）。
+# ⑧ PROGRESS.md 不许写死过期 PR 号：文中每个 `PR #<数字>` 必须能在 `git log --all --oneline` 里找到（见 D-017）。
 #
 # 注意：故意不用 `set -e` —— 一项失败也要把后面几项的结论打出来，
 #       否则「fail 在一半就退出」会让人误以为其他项是通过的。
@@ -34,7 +35,7 @@ for arg in "$@"; do
         --device) DEVICE=1 ;;
         --static) STATIC=1 ;;
         -h|--help|help)
-            sed -n '2,10p' "$0"
+            sed -n '2,12p' "$0"
             exit 0
             ;;
         *)
@@ -70,16 +71,16 @@ JAVA_SUM=$(find poc/displayserver/src -name '*.java' -print0 2>/dev/null |
     sort -z | xargs -0 cat 2>/dev/null | md5sum | cut -d' ' -f1)
 
 if [ "$STATIC" = "1" ]; then
-    echo "[1/7] SKIP  --static（云端无 Android SDK）"
+    echo "[1/8] SKIP  --static（云端无 Android SDK）"
 else
     if [ -f "$STAMP" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$JAVA_SUM" ] && [ -f "$JAR" ]; then
-        echo "[1/7] SKIP  java 未变化（server.jar $(stat -c%s "$JAR" 2>/dev/null) B）"
+        echo "[1/8] SKIP  java 未变化（server.jar $(stat -c%s "$JAR" 2>/dev/null) B）"
     else
         if bash tools/build_displayserver.sh >poc/displayserver/build/gate-build.log 2>&1; then
             printf '%s\n' "$JAVA_SUM" >"$STAMP"
-            echo "[1/7] OK    server.jar $(stat -c%s "$JAR" 2>/dev/null) B"
+            echo "[1/8] OK    server.jar $(stat -c%s "$JAR" 2>/dev/null) B"
         else
-            echo "[1/7] FAIL  build_displayserver（见 poc/displayserver/build/gate-build.log）"
+            echo "[1/8] FAIL  build_displayserver（见 poc/displayserver/build/gate-build.log）"
             fail "daemon-build"
         fi
     fi
@@ -89,16 +90,16 @@ fi
 # ② assembleDebug（必须用 ./gradlew；PATH 上的 gradle 4.31 会报 Task not found）
 # ---------------------------------------------------------------- #
 if [ "$STATIC" = "1" ]; then
-    echo "[2/7] SKIP  --static（云端无 Android SDK）"
+    echo "[2/8] SKIP  --static（云端无 Android SDK）"
 elif ./gradlew :app:assembleDebug >build/gate-gradle.log 2>&1; then
     if [ -f "$APK" ]; then
-        echo "[2/7] OK    APK md5 $(md5sum "$APK" | cut -d' ' -f1) / $(stat -c%s "$APK") B"
+        echo "[2/8] OK    APK md5 $(md5sum "$APK" | cut -d' ' -f1) / $(stat -c%s "$APK") B"
     else
-        echo "[2/7] FAIL  BUILD 通过但找不到 $APK"
+        echo "[2/8] FAIL  BUILD 通过但找不到 $APK"
         fail "apk-missing"
     fi
 else
-    echo "[2/7] FAIL  assembleDebug（见 build/gate-gradle.log）"
+    echo "[2/8] FAIL  assembleDebug（见 build/gate-gradle.log）"
     fail "assembleDebug"
 fi
 
@@ -133,13 +134,13 @@ if [ "$DEVICE" = "1" ]; then
         fi
     done
     if [ "$CV_OK" = "1" ]; then
-        echo "[3/7] OK    cv_selftest ${PASSED:-0}/${TOTAL:-0}"
+        echo "[3/8] OK    cv_selftest ${PASSED:-0}/${TOTAL:-0}"
     else
-        echo "[3/7] FAIL  cv_selftest ${PASSED:-0}/${TOTAL:-0}（见 $CACHE_DEVICE/cv_selftest.txt）"
+        echo "[3/8] FAIL  cv_selftest ${PASSED:-0}/${TOTAL:-0}（见 $CACHE_DEVICE/cv_selftest.txt）"
         fail "cv_selftest"
     fi
 else
-    echo "[3/7] SKIP  未加 --device"
+    echo "[3/8] SKIP  未加 --device"
 fi
 
 # ---------------------------------------------------------------- #
@@ -170,17 +171,17 @@ if [ "$DEVICE" = "1" ]; then
     SCORE=$(printf '%s' "$REPORT" | grep -oE '通过 [0-9]+/[0-9]+' | head -1 | tr -d ' ')
     HOLE=$(printf '%s' "$REPORT" | grep -oE '空洞 [0-9]+ms' | grep -oE '[0-9]+' | sort -rn | head -1)
     if [ "$DONE" != "1" ]; then
-        echo "[4/7] FAIL  四段报告 ${KEEPALIVE_TIMEOUT}s 内未定稿（${SCORE:-无报告}，末态 $WAITED s）"
+        echo "[4/8] FAIL  四段报告 ${KEEPALIVE_TIMEOUT}s 内未定稿（${SCORE:-无报告}，末态 $WAITED s）"
         fail "keepalive-timeout"
     elif [ "$SCORE" = "通过4/4" ] && [ -n "${HOLE:-}" ] && [ "${HOLE:-0}" -lt 5000 ]; then
-        echo "[4/7] OK    四段 4/4，C 段最大空洞 ${HOLE}ms"
+        echo "[4/8] OK    四段 4/4，C 段最大空洞 ${HOLE}ms"
     else
-        echo "[4/7] FAIL  四段 ${SCORE:-无报告}，C 段最大空洞 ${HOLE:-n/a}ms"
+        echo "[4/8] FAIL  四段 ${SCORE:-无报告}，C 段最大空洞 ${HOLE:-n/a}ms"
         fail "keepalive-4of4"
     fi
     root_shell "am force-stop $PKG"
 else
-    echo "[4/7] SKIP  未加 --device"
+    echo "[4/8] SKIP  未加 --device"
 fi
 
 # ---------------------------------------------------------------- #
@@ -293,20 +294,20 @@ GRADLE_WRAPPER=$(grep -E '^distributionUrl=' gradle/wrapper/gradle-wrapper.prope
     grep -oE 'gradle-[0-9.]+' | head -1)
 
 if [ -n "$HITS" ]; then
-    echo "[5/7] FAIL  硬约束命中：$HITS"
+    echo "[5/8] FAIL  硬约束命中：$HITS"
     fail "hard-constraints"
 elif [ "$AGP" != "8.13.2" ]; then
-    echo "[5/7] FAIL  AGP 版本是 ${AGP:-未知}，必须是 8.13.2（9.x 会让 Chaquopy 静默失效）"
+    echo "[5/8] FAIL  AGP 版本是 ${AGP:-未知}，必须是 8.13.2（9.x 会让 Chaquopy 静默失效）"
     fail "agp-version"
 else
-    echo "[5/7] OK    无禁用符号，AGP $AGP / $GRADLE_WRAPPER"
+    echo "[5/8] OK    无禁用符号，AGP $AGP / $GRADLE_WRAPPER"
 fi
 
 # ⑥ 状态同步门禁（规矩见 AGENTS.md：改了 app/ 或 poc/ 必须同时改 PROGRESS.md）
 # diff 范围：origin/main...HEAD 优先；没有 origin/main（浅克隆/新仓）退 HEAD~1..HEAD；
 # 两者都没有就 SKIP —— 门禁自己绝不允许把 CI 搞红。
 if [ "${OAS_SKIP_PROGRESS_CHECK:-0}" = "1" ]; then
-    echo "[6/7] SKIP  OAS_SKIP_PROGRESS_CHECK=1"
+    echo "[6/8] SKIP  OAS_SKIP_PROGRESS_CHECK=1"
 else
     RANGE=""
     if git rev-parse --verify -q origin/main >/dev/null 2>&1; then
@@ -315,18 +316,18 @@ else
         RANGE="HEAD~1..HEAD"
     fi
     if [ -z "$RANGE" ]; then
-        echo "[6/7] SKIP  无可用 diff"
+        echo "[6/8] SKIP  无可用 diff"
     else
         CHANGED=$(git diff --name-only "$RANGE" 2>/dev/null)
         if printf '%s\n' "$CHANGED" | grep -qE '^(app|poc)/'; then
             if printf '%s\n' "$CHANGED" | grep -qx 'PROGRESS.md'; then
-                echo "[6/7] OK    代码有改动，PROGRESS.md 已同步"
+                echo "[6/8] OK    代码有改动，PROGRESS.md 已同步"
             else
-                echo "[6/7] FAIL  改了 app/ 或 poc/ 但没改 PROGRESS.md（规矩见 AGENTS.md）"
+                echo "[6/8] FAIL  改了 app/ 或 poc/ 但没改 PROGRESS.md（规矩见 AGENTS.md）"
                 fail "progress-not-updated"
             fi
         else
-            echo "[6/7] OK    无 app/ 或 poc/ 改动（不需要更新 PROGRESS.md）"
+            echo "[6/8] OK    无 app/ 或 poc/ 改动（不需要更新 PROGRESS.md）"
         fi
     fi
 fi
@@ -334,29 +335,67 @@ fi
 # ⑦ 状态文件行数上限（AGENTS ≤50 / PROGRESS ≤40，见 DECISIONS.md D-015）
 # 状态卡一旦超长就会稀释最早设定，所以门禁直接卡行数：超了就删，不是缩。
 if [ "${OAS_SKIP_STATE_CHECK:-0}" = "1" ]; then
-    echo "[7/7] SKIP  OAS_SKIP_STATE_CHECK=1"
+    echo "[7/8] SKIP  OAS_SKIP_STATE_CHECK=1"
 else
     MISSING=""
     for sf in AGENTS.md PROGRESS.md DECISIONS.md; do
         [ -f "$sf" ] || MISSING="$MISSING $sf"
     done
     if [ -n "$MISSING" ]; then
-        echo "[7/7] FAIL  缺状态文件$MISSING"
+        echo "[7/8] FAIL  缺状态文件$MISSING"
         fail "state-files-missing"
     else
         AGENTS_LINES=$(wc -l <AGENTS.md | tr -d ' ')
         PROGRESS_LINES=$(wc -l <PROGRESS.md | tr -d ' ')
+        AGENTS_BYTES=$(wc -c <AGENTS.md | tr -d ' ')
+        PROGRESS_BYTES=$(wc -c <PROGRESS.md | tr -d ' ')
         DEC_COUNT=$(grep -c '^| D-' DECISIONS.md 2>/dev/null || true)
         DEC_COUNT=${DEC_COUNT:-0}
-        if [ "$AGENTS_LINES" -gt 50 ]; then
-            echo "[7/7] FAIL  AGENTS.md $AGENTS_LINES 行 > 50（超了就删，不是缩；见 D-015）"
+        if [ "$AGENTS_BYTES" -gt 5120 ]; then
+            echo "[7/8] FAIL  AGENTS.md $AGENTS_BYTES B > 5120 B（行数没超但字节超了；见 D-019）"
+            fail "agents-too-big"
+        elif [ "$PROGRESS_BYTES" -gt 4096 ]; then
+            echo "[7/8] FAIL  PROGRESS.md $PROGRESS_BYTES B > 4096 B（见 D-019）"
+            fail "progress-too-big"
+        elif [ "$AGENTS_LINES" -gt 50 ]; then
+            echo "[7/8] FAIL  AGENTS.md $AGENTS_LINES 行 > 50（超了就删，不是缩；见 D-015）"
             fail "agents-too-long"
         elif [ "$PROGRESS_LINES" -gt 40 ]; then
-            echo "[7/7] FAIL  PROGRESS.md $PROGRESS_LINES 行 > 40（超了就删，不是缩；见 D-015）"
+            echo "[7/8] FAIL  PROGRESS.md $PROGRESS_LINES 行 > 40（超了就删，不是缩；见 D-015）"
             fail "progress-too-long"
         else
-            echo "[7/7] OK    AGENTS $AGENTS_LINES/50 · PROGRESS $PROGRESS_LINES/40 · DECISIONS $DEC_COUNT 条（格式：行数超限就删，不是缩；见 D-015）"
+            echo "[7/8] OK    AGENTS ${AGENTS_LINES}/50行·${AGENTS_BYTES}/5120B · PROGRESS ${PROGRESS_LINES}/40行·${PROGRESS_BYTES}/4096B · DECISIONS ${DEC_COUNT} 条"
         fi
+    fi
+fi
+
+# ⑧ PROGRESS.md 不许写死过期 PR 号（D-017）
+# 判据：PROGRESS.md 里出现的每个 `PR #<数字>` 必须能在 `git log --all --oneline` 里找到；
+# 一个号都没写 → OK；git 不可用 / 不在仓库内 / 浅克隆 → SKIP（门禁自己绝不把 CI 搞红）。
+if [ "${OAS_SKIP_STATE_PR_CHECK:-}" = "1" ]; then
+    echo "[8/8] SKIP  OAS_SKIP_STATE_PR_CHECK=1"
+else
+    if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
+        # 浅克隆没有历史可查，「查不到」不等于「号过期」→ 宁可 SKIP 也不误报
+        if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+            echo "[8/8] SKIP  浅克隆仓库（无历史可查）"
+        else
+            LOG=$(git log --all --oneline 2>/dev/null)
+            STALE=""
+            # 抓取端要求 `PR #<数字>` 前缀，避免把条目编号、代码块里的 #123 当 PR 号；
+            # 匹配端用边界正则避免 #4 误匹配 #40（否则过期号会被当成存在 → 假 OK）
+            for n in $(grep -oE 'PR *#[0-9]+' PROGRESS.md 2>/dev/null | grep -oE '[0-9]+' | sort -u); do
+                printf '%s' "$LOG" | grep -qE "#$n([^0-9]|$)" || STALE="$STALE #$n"
+            done
+            if [ -n "$STALE" ]; then
+                echo "[8/8] FAIL  PROGRESS 写了 git log 里找不到的 PR 号：$STALE"
+                fail "state-pr-stale"
+            else
+                echo "[8/8] OK    PROGRESS 未写死过期 PR 号"
+            fi
+        fi
+    else
+        echo "[8/8] SKIP  不在 git 仓库内"
     fi
 fi
 

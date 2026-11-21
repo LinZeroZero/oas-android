@@ -11,11 +11,10 @@
   - 方向候选：把 phase driver 前移到 daemon（`kb run <a> <b> <c> <reportPath>`），app 只触发+显示
   - 决策：**ADR-0001 Accepted**（`docs/adr/0001-daemon-owns-automation.md`），实现拆成 BG-17~BG-21
 
-- [ ] **BG-34 虚拟屏上的游戏 activity 是 PAUSED，`input -d <displayId>` 不投递**（阻塞 P0-A 的 D 段判据）
-  - 实测（2026-11-18，证据 `docs/evidence/20261118-1520-BG-32-p0a-precondition.md` §4B）：display 38 `mCurrentFocus=null`、`mFocusedApp=null`；游戏 `Task{#933} visible=false visibleRequested=false`、`mLastPausedActivity=.Client`；`tap 800 530`／`keyevent 4`／`tap 640 120` 三次探针均无像素变化、`frames` 恒 544
-  - 影响：P0-A 的 D 段「唤醒 + 定向点击」无法执行；也无法远程点掉游戏内弹窗
-  - 归属：写手（先只读定位：是 display 焦点问题 / activity 生命周期问题 / 还是 `input -d` 在本机不可靠）+ D 复核
-  - ⚠ 本轮实测与「PoC 期 `input -d <displayId> tap` 可用」的旧记录冲突（旧记录出处待核）→ **以本轮实测为准**，需重新定位，不得直接引用旧结论
+- [x] **BG-34 虚拟屏 click 判据（原题「游戏 activity PAUSED、`input -d` 不投递」已被推翻）**
+  - ① 结论 motion 通、仅 key 需焦点（详见 D-020）
+  - ② 证据 → docs/evidence/20261121-2201-BG-34-closeout.md
+  - ③ 解除对 P0-A D 段（唤醒+定向点击）的阻塞
 
 - [ ] **BG-02 C 段（息屏 60s）从未真正测过**
   - 因 BG-01 连带阻塞；daemon 心跳在后台无空洞（645 拍/644s/maxGap 1004ms）只是旁证，不是 C 段数据
@@ -152,7 +151,7 @@
     - 报告：样本 135 / 846s / 自停否 / 采样最大间隔 7s / 虚拟屏 1（displayId 43）/ 非 Awake 94/135（69%）/ daemon 26738→26738（CPU +1623）/ 游戏 26808→26808（CPU +14648）/ D-T 冻结 0 样本 / 帧数 **603→7435（+6832）** / CSV 恒 15 列 → **判定: PASS**
     - **判据纠正（勿再误判）**：`stop` 报告的样本数天然低于「理论拍数」——846s÷135=6.27s/拍，单拍串行跑多条 `dumpsys` 已超设定的 5s 间隔；「节流跳过 108 拍」只是 **frames 列**按每 5 拍走一次 app 通道，不是丢样本。BACKLOG 第 135 行官方口径**没有样本数下限**，派单时写的「样本≥168」是把 846/5≈169 误当应落盘数，属伪判据，已作废
     - 执行人 A6；收工按纪律走「确认铃响 → 亮屏 → 拉 Operit 前台」：**960s 完成铃 = 哑铃（该实例未触发，`USAGE_ALARM state:started` 计数 0、无 23:01 `requestAudioFocus` 记录）**，另设 60s 对照铃于 23:03:09 真响（`TimerKlaxon` + `USAGE_ALARM` started=1 + Clock CPU 33852→37277）→ `SET_TIMER` 通路本身正常，但**完成铃不可依赖，下次收工改用「双计时器 + 到点前 1 分钟人工确认」**
-    - **未验（BG-34 阻塞）**：D 段 `input -d 43 tap 640 360` 是否真投递到游戏 —— 本轮只验到「唤醒后链路仍在」，不含「定向点击生效」
+    - ~~未验（BG-34 阻塞）~~ **部分已由 BG-34 结案**：`input -d` 的 motion 可投递（`TouchStatesByDisplay` 命中该窗口、`firstDownTimeInTarget` 非零，见 D-020）；仍缺的是「点击后画面变化」的可观测判据（`frames` / 整帧 md5 已废，见 `A7-step1-observable.md` §结论②）
   - 归属：A5（代码）/ D（评审）/ 主 AI（签发）/ 用户（真机长跑配合）
 
 ## 七、新需求立项（P1，先立项再排期）
