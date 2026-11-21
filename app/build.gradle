@@ -56,6 +56,14 @@ android {
             useLegacyPackaging true
         }
     }
+
+    // L2 烟测：把上游 vendor/oas 作为**额外** Python 源根（保留默认 src/main/python，不覆盖）。
+    // Chaquopy 的 python 源集由插件注册，这里只是追加目录。
+    sourceSets {
+        main {
+            python.srcDirs += ['../vendor/oas']
+        }
+    }
 }
 
 // Force use of ARM64 binaries for AAPT2 in Proot environment
@@ -86,6 +94,12 @@ chaquopy {
             install "numpy==1.26.2"
             // 缩放 + PNG 编解码用；Chaquopy 有预编译轮子（cp313 = pillow 11.0.0）
             install "pillow"
+            // L2 烟测（module/base 子集）：两者都是纯 Python
+            //   rich     ← module/logger.py 的 Console
+            //   decorator ← module/base/retry.py
+            // 注意：不要加 pydantic / onnxruntime / av / PySide6（无 cp313/arm64 轮子，加了必炸）
+            install "rich"
+            install "decorator"
         }
     }
 }

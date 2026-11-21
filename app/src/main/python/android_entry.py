@@ -84,6 +84,73 @@ def ping(delay_ms: int = 0) -> str:
     return "pong"
 
 
+# --------------------------------------------------------------------------- #
+# L2 子集烟测：module/base（vendor/oas 已作为额外 Python 源根打进 APK）
+# --------------------------------------------------------------------------- #
+#
+# 为什么先测 module/base：全量面被 pydantic-core / onnxruntime 卡死（见
+# docs/evidence/20261122-0057-L2-import-scan.md），而 base 只沾 cv2 / numpy。
+# 每个模块**独立** try/except —— 一个失败不能吞掉后面的探测结果。
+
+_SMOKE_BASE_MODULES = [
+    "module.base",
+    "module.base.timer",
+    "module.base.decorator",
+    "module.base.retry",
+    "module.base.filter",
+    "module.base.protect",
+    "module.base.log_highlighter",
+    "module.base.cBezier",
+]
+
+
+def smoke_base() -> str:
+    """逐个 import module/base 下的模块，并跑两步纯计算。
+
+    返回 JSON：{"ok": [...], "fail": [{"mod": ..., "err": ...}], "calc": {...}}
+    """
+    import importlib
+
+    ok = []
+    fail = []
+    for name in _SMOKE_BASE_MODULES:
+        try:
+            importlib.import_module(name)
+            ok.append(name)
+        except BaseException as exc:  # noqa: BLE001
+            fail.append({"mod": name, "err": "%s: %s" % (type(exc).__name__, exc)})
+
+    calc = {}
+    # 纯计算 1：cBezier 轨迹（numpy + math）
+    # simulation() 返回 dict：{"equation": 曲线函数, "P": 控制点数组}，不是 list。
+    try:
+        from module.base.cBezier import BezierTrajectory
+
+        sim = BezierTrajectory.simulation((0, 0), (10, 10), le=1)
+        points = sim["P"]
+        calc["bezier_points"] = int(len(points))
+        calc["bezier_head"] = [round(float(v), 4) for v in points[0][:2]]
+        calc["bezier_tail"] = [round(float(v), 4) for v in points[-1][:2]]
+        calc["bezier_y_at_0.5"] = round(float(sim["equation"](0.5)), 4)
+    except BaseException as exc:  # noqa: BLE001
+        calc["bezier_error"] = "%s: %s" % (type(exc).__name__, exc)
+
+    # 纯计算 2：Timer 对象（module/base/timer.py）
+    try:
+        from module.base.timer import Timer
+
+        timer = Timer(1)
+        timer.start()
+        calc["timer_current"] = round(float(timer.current()), 3)
+        calc["timer_reached"] = bool(timer.reached())
+    except BaseException as exc:  # noqa: BLE001
+        calc["timer_error"] = "%s: %s" % (type(exc).__name__, exc)
+
+    calc["python"] = platform.python_version()
+    calc["cwd"] = os.getcwd()
+    return json.dumps({"ok": ok, "fail": fail, "calc": calc}, ensure_ascii=False, default=str)
+
+
 def bench_capture(
     work_dir: str,
     rounds: int = 2,
