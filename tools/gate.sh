@@ -9,7 +9,7 @@
 # 末行固定输出 `GATE: PASS` 或 `GATE: FAIL <项名>`，便于直接当提交前的判据。
 # 每项固定打印一行 `[n/8] OK|SKIP|FAIL ...`。
 # ⑥ 状态同步：改了 app/ 或 poc/ 必须同时改 PROGRESS.md（规矩见 AGENTS.md）。
-# ⑦ 状态文件行数上限（AGENTS ≤50 / PROGRESS ≤40；见 DECISIONS.md D-015）。
+# ⑦ 状态文件上限：AGENTS ≤50 行且 ≤5 KB / PROGRESS ≤40 行且 ≤4 KB（见 DECISIONS.md D-015、D-019）。
 # ⑧ PROGRESS.md 不许写死过期 PR 号：文中每个 `PR #<数字>` 必须能在 `git log --all --oneline` 里找到（见 D-017）。
 #
 # 注意：故意不用 `set -e` —— 一项失败也要把后面几项的结论打出来，
@@ -347,16 +347,24 @@ else
     else
         AGENTS_LINES=$(wc -l <AGENTS.md | tr -d ' ')
         PROGRESS_LINES=$(wc -l <PROGRESS.md | tr -d ' ')
+        AGENTS_BYTES=$(wc -c <AGENTS.md | tr -d ' ')
+        PROGRESS_BYTES=$(wc -c <PROGRESS.md | tr -d ' ')
         DEC_COUNT=$(grep -c '^| D-' DECISIONS.md 2>/dev/null || true)
         DEC_COUNT=${DEC_COUNT:-0}
-        if [ "$AGENTS_LINES" -gt 50 ]; then
+        if [ "$AGENTS_BYTES" -gt 5120 ]; then
+            echo "[7/8] FAIL  AGENTS.md $AGENTS_BYTES B > 5120 B（行数没超但字节超了；见 D-019）"
+            fail "agents-too-big"
+        elif [ "$PROGRESS_BYTES" -gt 4096 ]; then
+            echo "[7/8] FAIL  PROGRESS.md $PROGRESS_BYTES B > 4096 B（见 D-019）"
+            fail "progress-too-big"
+        elif [ "$AGENTS_LINES" -gt 50 ]; then
             echo "[7/8] FAIL  AGENTS.md $AGENTS_LINES 行 > 50（超了就删，不是缩；见 D-015）"
             fail "agents-too-long"
         elif [ "$PROGRESS_LINES" -gt 40 ]; then
             echo "[7/8] FAIL  PROGRESS.md $PROGRESS_LINES 行 > 40（超了就删，不是缩；见 D-015）"
             fail "progress-too-long"
         else
-            echo "[7/8] OK    AGENTS $AGENTS_LINES/50 · PROGRESS $PROGRESS_LINES/40 · DECISIONS $DEC_COUNT 条（格式：行数超限就删，不是缩；见 D-015）"
+            echo "[7/8] OK    AGENTS ${AGENTS_LINES}/50行·${AGENTS_BYTES}/5120B · PROGRESS ${PROGRESS_LINES}/40行·${PROGRESS_BYTES}/4096B · DECISIONS ${DEC_COUNT} 条"
         fi
     fi
 fi
