@@ -56,6 +56,25 @@ android {
             useLegacyPackaging true
         }
     }
+
+    // L2 烟测：把上游 vendor/oas 作为**额外** Python 源根（保留默认 src/main/python，不覆盖）。
+    // 只打 module/base 及其运行时依赖（module/logger.py、module/exception.py），其余整目录排除：
+    //   tasks/ 24M、assets/、config/、deploy/，以及 module/{gui,ocr,daemon,device}
+    sourceSets {
+        main {
+            python {
+                srcDirs += ['../vendor/oas']
+                exclude 'tasks/**'
+                exclude 'module/gui/**'
+                exclude 'module/ocr/**'
+                exclude 'module/daemon/**'
+                exclude 'module/device/**'
+                exclude 'assets/**'
+                exclude 'config/**'
+                exclude 'deploy/**'
+            }
+        }
+    }
 }
 
 // Force use of ARM64 binaries for AAPT2 in Proot environment
@@ -86,6 +105,10 @@ chaquopy {
             install "numpy==1.26.2"
             // 缩放 + PNG 编解码用；Chaquopy 有预编译轮子（cp313 = pillow 11.0.0）
             install "pillow"
+            // L2 烟测（module/base 子集）：rich 是 module/logger.py 的顶层硬依赖。
+            // 不加 decorator：module/base/retry.py 对它有 except ImportError 降级分支。
+            // 注意：不要加 pydantic / onnxruntime / av / PySide6（无 cp313/arm64 轮子，加了必炸）
+            install "rich"
         }
     }
 }

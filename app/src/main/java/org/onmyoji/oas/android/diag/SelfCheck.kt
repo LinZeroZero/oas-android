@@ -39,6 +39,12 @@ object SelfCheck {
         measure("Python 运行时") {
             PyRuntime.ensureStarted(context)
             val hello = PyRuntime.call("hello")
+            // L2 子集烟测：module/base 逐模块 import + 纯计算，结果只落 logcat（不动 UI）
+            try {
+                android.util.Log.i("OAS_SMOKE", PyRuntime.call("smoke_base"))
+            } catch (t: Throwable) {
+                android.util.Log.e("OAS_SMOKE", "smoke_base failed: ${t.message}", t)
+            }
             CheckItem("Python 运行时", CheckState.OK, hello)
         }.also(onItem)
     }
