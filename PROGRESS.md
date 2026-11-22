@@ -8,7 +8,7 @@
 - 最近合并：**现查 `git log --oneline -3`**（本文件不写 PR 号/sha，见 D-013、D-017）
 - 可分发 APK：`app/build/outputs/apk/debug/app-debug.apk`（字节以 `ls -l` 为准）；`dist/` 两个包是旧的，未更新
 - **BG-32 P0-A 已结案**、**BG-35 C-2 已结案**（证据 `docs/evidence/20261118-2300-*` 与 `20261118-2235-*`）
-- **L2 烟测**：`vendor/oas` 已作额外 Python 源根接入（`python.srcDirs`）；先做 `module/base` 子集（`smoke_base()`，依赖 rich+decorator），全量面仍被 `pydantic-core`/`onnxruntime` 卡死
+- **L2 烟测**：`vendor/oas` 作额外 Python 源根并**排除 `tasks/**` 等**（APK 105.9MB→64.8MB）；`module/base` 子集探针 `smoke_base()` 在机内 **ok=8/fail=0**（仅依赖 `rich`）
 
 ## BG-34 结论（2026-11-19 两轮实测 + 两次 4-eyes）
 - **原前提「`input -d` 不投递」不成立**：motion 投递成功（`TouchStatesByDisplay` 出现该窗口 target、`firstDownTimeInTarget` 非零，全程无 `Dropping`）
