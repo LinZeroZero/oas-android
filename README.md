@@ -8,7 +8,16 @@
 - 当前状态：
   - **阶段 0 完成** —— 构建链路、环境自检、root 抓帧→1280×720 画布管线、可指定 displayId 的无头抓帧验证器（Android 14 / arm64 / Magisk 真机通过，横屏游戏帧 `2412×1080` 已实测）
   - **阶段 1 PoC-A 完成（7/7）** —— root 特权守护进程建 `1280×720@320` 虚拟屏，**阴阳师原生渲染在里面**，主屏照常用手机；抓帧 **p50 5.0 ms**、定向点击只作用虚拟屏、主屏刷别的 App 时虚拟屏仍持续出帧
-- 下一步：**P1 前台服务 + WakeLock**（解决 app 进程被 cached-app freezer 冻结），然后 Python 3.13 / `CvBridge` / `android_impl.py` 插拔点
+- 下一步：**L2 引擎接入**。全量面被 `pydantic-core` / `onnxruntime` 无 Android 轮子卡住（`docs/evidence/20261122-0057-L2-import-scan.md`）；`module/base` 子集已在真机 APK 内跑通（`ok=8 / fail=0`，`docs/evidence/20261122-0233-L2-base-smoke.md`）；接着做 `module/device`（须摘 `platform2` 的 pydantic 与 `scrcpy` 的 av）与 OCR 推理后端选型
+
+**进度分档（2026-11-22）**
+
+| 层 | 内容 | 进度 |
+|---|---|---|
+| L0 宿主 | 构建链路、环境自检、root 通道、抓帧管线 | ~9 成 |
+| L1 运行时 | Chaquopy 启动、虚拟屏、daemon、保活 | ~7 成 |
+| L2 引擎接入 | 把 OAS Python 引擎装进 APK 并在真机跑 | 子集已跑通（`module/base` ok=8 / fail=0） |
+| L3 产品 | 任务调度、配置、UI、分发 | 0 |
 
 > 📌 **接手开发（人或 AI）先读三份，一屏读完**：
 > [**AGENTS.md**](AGENTS.md) 规矩（什么不许做）· [**PROGRESS.md**](PROGRESS.md) 位置（现在干到哪、下次从哪接）· [**DECISIONS.md**](DECISIONS.md) 决定（为什么这么定、怎么退回去）。
@@ -83,7 +92,7 @@ bash tools/build_displayserver.sh                          # 生成虚拟屏 dae
 # 产物：app/build/outputs/apk/debug/app-debug.apk
 ```
 
-> 最近一次实测产物是 `app/build/outputs/apk/debug/app-debug.apk`（**48,584,303 B**，含预览修复）；
+> 最近一次实测产物是 `app/build/outputs/apk/debug/app-debug.apk`（**字节以 `ls -l` 现查，不要引用本文数字**；2026-11-22 含 `module/base` 烟测时为 64,805,780 B）；
 > `dist/` 里只有两个**旧**包（`oas-android-debug.apk` 11-14、`oas-bg22-debug.apk` 11-15，均 48,891,504 B），**不要拿去分发**。
 > APK 体积随构建浮动，**以 `ls -l` 为准**；`app/build/` 平时保持清理状态，需要新包时再构建（约 50s）。
 
