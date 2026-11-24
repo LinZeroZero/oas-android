@@ -12,7 +12,8 @@
 |---|---|
 | 被核查说法出处 | `docs/handoff/20261118-1359-e1-handoff.md` §5 第 8 条 |
 | 该说法所引 `BG-31` 在 `docs/BACKLOG.md` 命中数 | **0** |
-| `docs/evidence/` 中 `monkey` / `accelerometer_rotation` 记录数 | **0** |
+| 本记录落库**前**，`monkey` 在 `docs/evidence/` 的记录数 | **0**（本条即首份） |
+| `accelerometer_rotation` 在 `docs/evidence/` 的记录 | **6 个文件**，全部是收工核账「复位到 0」（`20261117-2239`/`20261117-2339`/`20261118-2235`/`20261118-2300`/`20261122-0057`/`20261122-0233`），**无「被写坏」记录** |
 | `Monkey.java` | 57,598 B（HTTP 200） |
 | `MonkeyRotationEvent.java` | 2,035 B（HTTP 200） |
 | `ACCELEROMETER\|Settings.System\|putInt` 在两文件命中 | **0 / 0** |

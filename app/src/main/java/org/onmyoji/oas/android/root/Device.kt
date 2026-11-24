@@ -196,6 +196,12 @@ object Device {
      * 至启动完成（游戏冷启动可达数秒）。故改为「`am start` 立即返回 + 轮询 `pidof` 确认」，
      * 每次 shell 调用都很短；判据也从文本改为「进程真的起来了」。
      *
+     * ⚠ 调用约束：
+     *   - **必须在后台线程调用**：本函数会阻塞调用线程最多 `LAUNCH_CONFIRM_MS`（20s）轮询，
+     *     主线程调用会 ANR。
+     *   - 判据是「进程存在」而非「界面已起」：目标包若有常驻后台进程，可能提前返回 true；
+     *     需要「界面已起」语义时须另行复核 `dumpsys activity` 的 ResumedActivity。
+     *
      * 另：交接包曾记录「`monkey` 会把 `accelerometer_rotation` 写成 1」，但该说法**因果未定**
      * （出处仅交接包；所引 BG-31 不存在；AOSP stock 层面已复算不成立）。
      * 核查过程见 `docs/evidence/20261125-0530-monkey-rotation-未定因.md`。
