@@ -44,6 +44,10 @@
   - ⑪ 自述数字比对（只查三类，其余不查）：① 任意 `.md` 里同一行出现 `<docs/handoff/某包>.md` 与「N 行」时，用 `wc -l` 与该包实际行数比对（这类描述通常写在 `docs/HANDOFF.md` / `docs/handoff/README.md`，不在包自身）；**引用的包不存在则 SKIP**；② `[x] N 项 / [ ] M 项` vs BACKLOG 实际计数；③ 提到 APK 字节时 vs `ls -l`，**产物不存在则 SKIP**；不一致即 FAIL
   - ⑫ 交接包唯一性：`docs/handoff/` 按四类分组各只允许 1 份 —— `-main-ai`（主 AI）/ `-e<N>-handoff`（交接包位）/ `-d-reviewer`（评审）/ `-BG-<号>-`（写手包）；以现有 4 包自验：`20261121-2110-main-ai` / `20261118-1359-e1-handoff` / `20261118-1420-d-reviewer` / `20261118-2335-BG-34-readonly-probe` 各归一类；任一组超 1 份即 FAIL
   - 依据：BG-36 三轮里死链 / `143 vs 123` / 7 条超限全靠人眼抓；且 ⑨ 若不加豁免会当场把本仓判 FAIL
+- [ ] **BG-39 交接包按 D-026 重写（四类 → 两类）** —— D-026 已取消写手/文档/交接包三岗，但 `docs/handoff/` 仍是 4 份包对应 4 个岗位：`-e1-handoff`（交接包位，已取消）、`-BG-34-readonly-probe`（写手，已取消）、`-d-reviewer`（11-18 旧包）、`-main-ai`（岗位在但内容过时）；`docs/handoff/README.md` 仍写「一个写手位 / 四类交接包 / 由交接包 E 撰写」；`docs/HANDOFF.md:405-408` 四处「（当前）」指针指向它们
+  - 动作：删 3 份（`20261118-1359-e1-handoff` / `20261118-2335-BG-34-readonly-probe` / `20261118-1420-d-reviewer`）；README 改为「两类（主 AI / D）」并删「由 E 撰写」；`HANDOFF.md` 指针同步；`20261121-2110-main-ai.md` 按现行规则（C 模式、D-026 角色、§5 八条、D-030/031/032）重写
+  - 前置（**已解除**）：包内唯一独有知识「`monkey` 会把 `accelerometer_rotation` 写成 1」已落到 `Device.kt` KDoc，并有真机单变量对照证据（`docs/evidence/20261125-0617-monkey-vs-amstart-rotation-真机对照.md`）；`Device.startApp()` 已改 `am start`（#59）
+  - 归属：主 AI；抽审（记录类，不阻塞）
 
 ## 三、设备侧隐患（P2）
 
