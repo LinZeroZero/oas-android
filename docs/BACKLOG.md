@@ -34,6 +34,10 @@
   - 现象：`System_specialProperties → __strncat_chk` 空指针崩，`getcwd()` 返回 NULL；所有 `app_process` 调用必先 `cd /data/local/tmp`
   - `env -i` 不能绕过，反而变成 rc=0 全空跑（更难查）
   - 关闭依据：`docs/HANDOFF.md §十二 已知坑` 已入册 + 交接包 §4 复述（`docs/evidence/20261115-0057-BG-21-pilot.md §0` 为原始发现）
+- [x] **BG-36 README / HANDOFF 状态腐坏收口** —— `README:11` 的「下一步」与 `README:86` 的 APK 字节过期、缺四层进度；`HANDOFF §零`「插拔点未接 / 待办 13:14」作废；`docs/handoff/20261118-2200-main-ai.md` 已被取代
+  - 证据：README「进度分档（2026-11-22）」表 + `HANDOFF §零` ⏳ 行；`docs/handoff/` 剩 4 包 + README
+- [ ] **BG-37 DECISIONS 单条字节超限 + gate ⑦ 不校验单条** —— 现查 **7 条**超 300 B：D-010 342 / D-012 331 / D-015 391 / D-016 391 / D-017 363 / D-018 320 / D-019 411；gate ⑦ 只 `grep -c` 条数、不判单条
+  - 方向：⑦ 加单条字节校验 + 把这 7 条压到 ≤300 B（压条＝改历史决定文本，须单独 PR + 用户签发）
 
 ## 三、设备侧隐患（P2）
 
