@@ -1,3 +1,6 @@
+> ⚠ **本记录的「因果未定」结论已被真机实验推翻**（2026-11-25）：`monkey` 启动后 `accelerometer_rotation` 0→1，`am start` 保持 0。
+> 见 `docs/evidence/20261125-0617-monkey-vs-amstart-rotation-真机对照.md`；本文保留作历史。
+
 # `monkey` 与 `accelerometer_rotation`：记录核查（结论：因果未定）
 
 ## 1. 日期 / 分支 / commit
