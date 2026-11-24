@@ -185,8 +185,12 @@ object Device {
     /**
      * 拉起 app 到前台。
      *
-     * ⚠ **不要改用 `monkey`**：实测它会把 `accelerometer_rotation` 写成 1（改坏设备自动旋转开关），
-     *   而本仓代码里没有任何地方会复位它。必须走 `am start`。
+     * 实现：`cmd package resolve-activity` + `am start -n`。**不要改用 `monkey`** ——
+     * `monkey` 是测试工具（随机事件注入），不是生产启动方式。
+     *
+     * 另：交接包曾记录「`monkey` 会把 `accelerometer_rotation` 写成 1」，但该说法**因果未定**
+     * （出处仅交接包；所引 BG-31 不存在；AOSP stock 层面据评审核查不成立）。
+     * 核查过程见 `docs/evidence/20261125-0530-monkey-rotation-未定因.md`。
      */
     @JvmStatic
     fun startApp(pkg: String): Boolean {
