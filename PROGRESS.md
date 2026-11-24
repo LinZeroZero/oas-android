@@ -10,7 +10,7 @@
 - 最近合并：**现查 `git log --oneline -3`**（本文件不写 PR 号/sha，见 D-013、D-017）
 - 可分发 APK：`app/build/outputs/apk/debug/app-debug.apk`（字节以 `ls -l` 为准）；`dist/` 两个包是旧的，未更新
 - **L2 烟测**：`vendor/oas` 作额外 Python 源根并**排除 `tasks/**` 等**（APK 105.9MB→64.8MB）；`module/base` 子集探针 `smoke_base()` 在机内 **ok=8/fail=0**（仅依赖 `rich`）已知风险：`module/device/**` 已 exclude（下轮烟测前须放开）；`module/config/**` 随包但依赖 pydantic 不可用
-- **`Device.startApp()` 已改用 `am start -n`**（`monkey` 是测试工具不用于生产启动；「monkey 写坏 rotation」因果未定，见 `docs/evidence/20261125-0530-monkey-rotation-未定因.md`）
+- **`Device.startApp()` 已改用 `am start -W -n`**（带 -W 等启动完成，超时 30s，判据 `Status: ok`）（`monkey` 是测试工具不用于生产启动；「monkey 写坏 rotation」因果未定，见 `docs/evidence/20261125-0530-monkey-rotation-未定因.md`）
 
 ## BG-34 结论（已结案；细节见 evidence）
 - motion **可投递**、仅 **key 需 focused window**（AOSP `:2313`）；⚠ **`frames` / 整帧 md5 都不能当点击判据**（静止画面仍有 ~1.2% 像素在动）——归因与阈值见 `docs/evidence/20261125-0433-BG-34-observable-criteria.md`

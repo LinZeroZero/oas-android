@@ -195,7 +195,16 @@ object Device {
     @JvmStatic
     fun startApp(pkg: String): Boolean {
         val component = resolveLauncherComponent(pkg) ?: return false
-        return shell("am start -n $component").contains("Starting:")
+        val sh = shell() ?: return false
+        // 必须带 -W（等启动完成）并用 30s 超时：am start -W 会阻塞到 activity 起来，
+        // 游戏冷启动可达数秒，SuShell.run 默认 10s 会误判为失败。
+        // 判据用 `Status: ok`：仅有 `Starting:` 时 activity 不存在也会先打印，属假阳性。
+        val result = sh.run("am start -W -n $component", 30_000)
+        if (!result.ok) {
+            lastError = "startApp($pkg) failed: code=${result.code} out=${result.output.take(200)}"
+            return false
+        }
+        return result.output.contains("Status: ok")
     }
 
     /** 解析 launcher activity（`<pkg>/<activity>`）；失败返回 null。 */
