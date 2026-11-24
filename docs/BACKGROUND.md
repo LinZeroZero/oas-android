@@ -211,7 +211,7 @@ raw 格式刻意做成 **`screencap` 兼容**：`12 | width | height | format(=1
 
 ---
 
-## 十、技术选型与代价（2026-11-25 补记，对应 D-032）
+## 十、技术选型与代价（2026-11-25 补记，对应 D-032 / D-033）
 
 **决定**：把 OAS 的 Python 引擎以 **Chaquopy 嵌入式 CPython 3.13.16** 跑在 APK 进程内（见 `DECISIONS` D-032）。
 
