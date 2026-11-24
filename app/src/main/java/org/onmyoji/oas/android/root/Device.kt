@@ -16,6 +16,9 @@ object Device {
     @Volatile
     private var lastError: String = ""
 
+    /** 启动后轮询确认进程的时长上限（毫秒）。 */
+    private const val LAUNCH_CONFIRM_MS = 20_000L
+
     /** Python 侧调用时没有 Context 可用，这里留一个由 UI 层注入的应用级 Context。 */
     @Volatile
     private var appContext: Context? = null
@@ -188,23 +191,30 @@ object Device {
      * 实现：`cmd package resolve-activity` + `am start -n`。**不要改用 `monkey`** ——
      * `monkey` 是测试工具（随机事件注入），不是生产启动方式。
      *
+     * ⚠ **不带 `-W`**：`SuShell.run()` 在 `synchronized(lock)` 内调用 `waitFor`
+     * （`SuShell.kt:62-72`），带 `-W` 会把抓帧/点击等**所有同期 shell 调用**一起阻塞
+     * 至启动完成（游戏冷启动可达数秒）。故改为「`am start` 立即返回 + 轮询 `pidof` 确认」，
+     * 每次 shell 调用都很短；判据也从文本改为「进程真的起来了」。
+     *
      * 另：交接包曾记录「`monkey` 会把 `accelerometer_rotation` 写成 1」，但该说法**因果未定**
-     * （出处仅交接包；所引 BG-31 不存在；AOSP stock 层面据评审核查不成立）。
+     * （出处仅交接包；所引 BG-31 不存在；AOSP stock 层面已复算不成立）。
      * 核查过程见 `docs/evidence/20261125-0530-monkey-rotation-未定因.md`。
      */
     @JvmStatic
     fun startApp(pkg: String): Boolean {
         val component = resolveLauncherComponent(pkg) ?: return false
-        val sh = shell() ?: return false
-        // 必须带 -W（等启动完成）并用 30s 超时：am start -W 会阻塞到 activity 起来，
-        // 游戏冷启动可达数秒，SuShell.run 默认 10s 会误判为失败。
-        // 判据用 `Status: ok`：仅有 `Starting:` 时 activity 不存在也会先打印，属假阳性。
-        val result = sh.run("am start -W -n $component", 30_000)
-        if (!result.ok) {
-            lastError = "startApp($pkg) failed: code=${result.code} out=${result.output.take(200)}"
+        val out = shell("am start -n $component")
+        if (!out.contains("Starting:")) {
+            lastError = "startApp($pkg) 未返回 Starting: ${out.take(200)}"
             return false
         }
-        return result.output.contains("Status: ok")
+        val deadline = System.currentTimeMillis() + LAUNCH_CONFIRM_MS
+        while (System.currentTimeMillis() < deadline) {
+            Thread.sleep(400)
+            if (appPid(pkg) > 0) return true
+        }
+        lastError = "startApp($pkg) am start 已发出，但 ${LAUNCH_CONFIRM_MS}ms 内未见进程（未知：可能仍在启动）"
+        return false
     }
 
     /** 解析 launcher activity（`<pkg>/<activity>`）；失败返回 null。 */
