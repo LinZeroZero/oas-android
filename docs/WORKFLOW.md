@@ -7,18 +7,8 @@
 
 > ⚠ **2026-11-23 起角色已合并（D-026）**：取消写手 / 文档位 / 交接包位，仓库所有文件由主 AI 写并提交；只保留 1 个只读审查位（`OAS-D2`）。本节（含下表、其下各条及其子条目）为历史口径；其余章节里残留的「写手/A」按 D-027 读作「主 AI」，判活一律看 `AGENTS.md §1`。
 
-| 角色 | 会话 | 可以做什么 | 绝对不可以做什么 |
-|---|---|---|---|
-| 主 AI（调度） | 当前对话 | 建会话、投递任务、验收 D 的评审结论（不做逐行 review）、汇总、改 `docs/HANDOFF.md` 与 `docs/WORKFLOW.md` | 改 `app/`、`poc/displayserver/` 等代码 |
-| 写手（**唯一代码位，可接力换人**） | `OAS-A 写手（唯一代码位）` 及其接力会话（A2/A3…） | 代码、构建、装机、真机验证、`git commit` | 与另一个写手会话**并行**改代码；换工作区；未经评审直接合 `main` |
-| 诊断 B | `OAS-B 旋转定责（只读）` | 只读命令、整理证据 | 写任何文件、装有副作用的设置 |
-| 文档 C | `OAS-C 文档` | `README.md`、`THIRD_PARTY_NOTICES.md`、`CHANGELOG.md` | `app/`、`HANDOFF.md`、碰设备 |
-| 调研 D（**兼任评审**） | `OAS-D<n> 调研兼评审（…）` | 联网调研；只读审 `git diff <tag>...HEAD`、按 §5 检查表出 PASS/FAIL | 写代码、碰设备、改任何文件、`git add/commit` |
-| 交接包 E | `OAS-E1 交接包（…）` | 写 `docs/handoff/*.md` 的七要素交接包（写手棒 / 主 AI 棒）；可在自己会话里只读查证事实 | `docs/HANDOFF.md`、`docs/WORKFLOW.md`、`app/`、`poc/`、碰设备、`git add/commit` |
 
-**唯一写手原则**：任一时刻只有 **1 个**写手会话持有代码写手位。B/C/D/E 发现要改代码，只交结论给写手。
 
-**C 与 E 的分工**：C 管**对外**文档（`README.md`、`THIRD_PARTY_NOTICES.md`、`CHANGELOG.md`），E 管**对内接力**文档（`docs/handoff/*.md`）；两者都不碰 `docs/HANDOFF.md`（主索引由主 AI 把关，避免索引与正文断裂），也都不碰代码与设备。
 
 **会话命名与分组**：本项目（OAS 适配安卓端）的**所有**子 AI 会话——包括每一棒继任写手 A2/A3/…——**一律放在已有分组「OAS安卓端适配」里，不新建分组**；标题统一为 `OAS-<角色><序号> <具体任务>`，例如 `OAS-A3 写手（BG-23 --socket 真参数）`。新会话建完**必须立刻改名**——自动生成的标题（如 `KbRun心跳报告分段统计改造`）等于没命名，接力时找不回是谁。
 
@@ -205,7 +195,7 @@
 |---|---|
 | 分支 | `feat/b-daemon-heartbeat`（9 个提交） |
 | CI | `static-gate` 绿 → PR `mergeable_state` 从 `blocked` 变 `clean`（证明拦截生效） |
-| 合并 | merge commit `929750b`，分支短命，合完即可删 |
+| 合并 | merge commit `929750b`，分支短命，合完即可删（**历史写法**；现行一律 squash，见 D-029） |
 | tag | `v0.2.0-b1`（预发布，因 BG-01 未过四段 4/4） |
 | 未验收的部分 | 明确写进 merge commit message，不藏在聊天里 |
 
