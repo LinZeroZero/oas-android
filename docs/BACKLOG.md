@@ -194,3 +194,11 @@
   - **观测口径修正**：判「屏还在不在」不能直接拿 `dumpsys display | grep -c 'DisplayInfo{"oas"'` 跟 1 比 —— 运行期实测为 **2**（同一屏打印 `mBaseDisplayInfo` + `mOverrideDisplayInfo` 两行），**按 displayId 去重后才是 1**；清场后应为 0
   - **未开**：C-1（flags 重打 jar，**押后**且必须从头重做 —— 上一棒越线做过已整体回滚，未评审未合并）、C-3（预览与主屏共存，含与 BG-22 `setSurface(null)` 的冲突）
 - 归属：主 AI（立项/排期/验收）→ 写手（实现）→ D（评审）
+
+## 八、L2 引擎接入（P0）
+
+- [ ] **BG-40 OAS OCR 在 APK 内跑通（ppocronnx shim + onnxruntime AAR）**
+  - 现状：proot 已用 `onnxruntime 1.20.0` CPU 版跑通 rec（4/4 合成样本正确，中位 **66–68 ms**，证据 `docs/evidence/20261125-0732-OCR-rec-proot-baseline.md`）；**APK 内仍不可用**（Chaquopy 无 onnxruntime 轮子）
+  - 动作：① 写 `ppocronnx` shim（`app/src/main/python/ppocronnx/`，接口与上游一致，OAS 代码零改动）；② Kotlin `OcrRuntime.kt`（`OrtSession` 封装，支持 CPU / NNAPI 切换）；③ 模型 `ch_PP-OCRv2_rec_infer.onnx`（8,361,244 B）+ 字典（6,623 字）入 `assets/`；④ `THIRD_PARTY_NOTICES` 加 ppocr-onnx（Apache-2.0）
+  - 验收：`BaseCor.ocr_single_line()` 在 APK 内对一张 ROI 返回非空文本且不抛异常；证据落 `docs/evidence/`
+  - 归属：主 AI；必审（改 app/）
