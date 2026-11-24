@@ -10,11 +10,10 @@
 - 最近合并：**现查 `git log --oneline -3`**（本文件不写 PR 号/sha，见 D-013、D-017）
 - 可分发 APK：`app/build/outputs/apk/debug/app-debug.apk`（字节以 `ls -l` 为准）；`dist/` 两个包是旧的，未更新
 - **L2 烟测**：`vendor/oas` 作额外 Python 源根并**排除 `tasks/**` 等**（APK 105.9MB→64.8MB）；`module/base` 子集探针 `smoke_base()` 在机内 **ok=8/fail=0**（仅依赖 `rich`）已知风险：`module/device/**` 已 exclude（下轮烟测前须放开）；`module/config/**` 随包但依赖 pydantic 不可用
+- **`Device.startApp()` 已改 `am start -n` + 轮询 `pidof`**（不用 `-W` 避免长持锁）；**真机已验证**（2026-11-25）：`am start` 后 rotation 0→0，`monkey` 后 0→1（证据 `docs/evidence/20261125-0617-monkey-vs-amstart-rotation-真机对照.md`）（`monkey` 是测试工具不用于生产启动；「monkey 写坏 rotation」因果未定，见 `docs/evidence/20261125-0530-monkey-rotation-未定因.md`）
 
-## BG-34 结论（2026-11-19 两轮实测 + 两次 4-eyes）
-- **原前提「`input -d` 不投递」不成立**：motion 投递成功（`TouchStatesByDisplay` 出现该窗口 target、`firstDownTimeInTarget` 非零，全程无 `Dropping`）
-- 真实剩余问题：**key 在无 focused window 的屏上被丢**（AOSP `:2313`）→ C-1（`TRUSTED|OWN_FOCUS`）降级为「仅 key 需要」的可选项
-- ⚠ **判据纠正**：`frames` 与**整帧 md5 都不能当点击生效判据**（静止画面仍有 ~1.2% 像素在动）；可观测判据见 `docs/evidence/20261125-0433-BG-34-observable-criteria.md` §3
+## BG-34 结论（已结案；细节见 evidence）
+- motion **可投递**、仅 **key 需 focused window**（AOSP `:2313`）；⚠ **`frames` / 整帧 md5 都不能当点击判据**（静止画面仍有 ~1.2% 像素在动）——归因与阈值见 `docs/evidence/20261125-0433-BG-34-observable-criteria.md`
 
 ## 在飞
 - **无在飞 PR**（上一轮已合并回 main；要具体 sha 现查 `git log --oneline -1`，本文件不记，见 D-013/D-017）
