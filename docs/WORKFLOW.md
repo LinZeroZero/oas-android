@@ -5,7 +5,7 @@
 
 ## 1. 角色与边界
 
-> ⚠ **2026-11-23 起角色已合并（D-026）**：取消写手 / 文档位 / 交接包位，仓库所有文件由主 AI 写并提交；只保留 1 个只读审查位（`OAS-D2`）。本节（含下表及其下各条原则）为历史口径，判活一律看 `AGENTS.md §1`。
+> ⚠ **2026-11-23 起角色已合并（D-026）**：取消写手 / 文档位 / 交接包位，仓库所有文件由主 AI 写并提交；只保留 1 个只读审查位（`OAS-D2`）。本节（含下表、其下各条及其子条目）为历史口径；其余章节里残留的「写手/A」按 D-027 读作「主 AI」，判活一律看 `AGENTS.md §1`。
 
 | 角色 | 会话 | 可以做什么 | 绝对不可以做什么 |
 |---|---|---|---|
@@ -112,7 +112,7 @@
 **判定**：合并门禁不过 → 不许合入 main；发布门禁不过 → 只能打 `-bN` 预发布 tag，不许打正式版。
 
 ## 5. 评审方式（D 出 PASS/FAIL，主 AI 签发）
-**执行人**：本检查表由 D 执行、按 tag 增量出 PASS/FAIL；主 AI 只验收结论、签发合并，不逐行 review（对齐 §1 四眼原则：D 评审 → 写手修改 → 主 AI 签发）。
+**执行人**：本检查表由 D 执行、按 tag 增量出 PASS/FAIL；主 AI 只验收结论、签发合并，不逐行 review（对齐 §1 四眼原则：主 AI 实现 → D 评审 → 主 AI 签发）。
 
 **锚点用 tag，不用 `main`。** 因为 feature 分支可能就是从同一个提交切出来的，`main...HEAD` 会显示空 diff。
 
@@ -154,7 +154,7 @@
 | `git diff` / `log` / `status` / `show` | 所有人（只读） |
 
 - A 绝对不要 `checkout`/`reset`/`rebase`：会把主 AI 或其他会话的工作区一起切走
-- 主 AI 做 `checkout`/`merge` 前先确认：没有 gradle 在跑、A 处于空闲
+- 主 AI 做 `checkout`/`merge` 前先确认：没有 gradle 在跑、且无其它会话在工作区
 - 找不到能回滚的点时用最近一个 tag，不要用 `reset --hard` 盲猜
 
 ### 9.1 同时活跃上限（硬性，实测内存只剩 401MB / loadavg 18.6）
@@ -167,8 +167,8 @@
 
 ## 10. 一个任务的完整生命周期（照这个走）
 
-1. 主 AI 从最新已验证 tag 切分支：`git checkout -b feat/<主题> <tag>`，通知 A 当前分支名
-2. A 小步实现 + 小步 commit（每次 commit 前跑一次 assembleDebug）
+1. 主 AI 从最新已验证 tag 切分支：`git checkout -b feat/<主题> <tag>`，记录当前分支名
+2. 主 AI 小步实现 + 小步 commit（每次 commit 前跑一次 assembleDebug）
 3. 门禁：需要时跑 cv_selftest 32/32 与四段 4/4，结果写 `docs/evidence/`
 4. D 按 tag 做 diff 评审、出 PASS/FAIL（只看增量）；主 AI 只验收结论、签发合并
 5. 通过 → `merge --no-ff` 进 main → 打 tag → 改 `docs/HANDOFF.md` 结论
