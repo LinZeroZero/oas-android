@@ -23,7 +23,7 @@
 1. **`module/device` 烟测**：放开 exclude + 摘 `platform2`（pydantic）与 `scrcpy`（av）→ 装机（需用户给时点）
 2. **OCR 后端选型**：opencv-DNN / TFLite / ncnn 三选一（不占机）
 3. **`tools/tplmatch.py`**：numpy NCC + 降采样，基线 `1234.jpg`
-4. **BG-38 实现**（gate ⑨⑩⑪⑫）｜ **BG-37** 压条 7 条（须单独 PR + 用户签）
+4. **BG-38 实现**（gate ⑨⑩⑪⑫）｜ **BG-37** ⑦ 加「只判新增条目」校验（存量已按 D-031 标「历史超标」豁免）
 
 ## 阻塞 / 等人
 - 真机类实验（熄屏、占机）必须先得到用户给的时点

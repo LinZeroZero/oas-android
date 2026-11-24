@@ -208,3 +208,27 @@ raw 格式刻意做成 **`screencap` 兼容**：`12 | width | height | format(=1
 5. 顺带：抓帧限频 1~2 fps 省电、息屏/锁屏下是否仍出帧的专项验证。
 
 > 反作弊风险仍按 `HANDOFF.md` §八 处理：产品风险而非技术风险，测试号先跑，不承诺安全。
+
+---
+
+## 十、技术选型与代价（2026-11-25 补记，对应 D-032）
+
+**决定**：把 OAS 的 Python 引擎以 **Chaquopy 嵌入式 CPython 3.13.16** 跑在 APK 进程内（见 `DECISIONS` D-032）。
+
+**否决的路线**
+
+| 路线 | 否决理由 |
+|---|---|
+| Termux / proot 里跑 Python | 装不成单 APK；proot 里摸不到 Android API（虚拟屏 / `app_process` / `input`），还要再过一层桥 |
+| 用 Kotlin 重写 OAS | 449 个 `.py` + numpy/opencv/pydantic 依赖，等于重写整个项目；且永久脱离上游更新 |
+| PC 端跑脚本 + 手机当终端（MAA 走 ADB 那条） | 直接违背「无需 PC」的目标；MAA 的 `input -d` / `screencap -d` 配置反而成了我们走虚拟屏的反证 |
+| python-for-android / Briefcase | 对 C 扩展与 Qt 支持差，`numpy/opencv` 这类包更难打 |
+| 手搓 JNI 嵌 CPython | 等于重做 Chaquopy，工期不可控 |
+
+**已知代价（这些是选型的边界，不是实现缺陷）**
+
+1. **只能用 Chaquopy 有轮子的包**：索引仅 138 个（cp313/arm64）。实测 `onnxruntime` / `pydantic-core` / `pyclipper` 全 404；`opencv-python` 只有 cp38/cp310。
+2. **Qt/PySide6 进不来** → OAS 的 `gui.py`（18 处引用）必须砍，界面用 Compose 重写。
+3. **Python 与 AGP 版本被锁**：CPython 3.13.16 由插件决定；AGP 不能上 9.x（Chaquopy 17 的 DSK 会静默失效，见 `AGENTS §2`）。
+
+**遇到轮子缺口时的既定退路**：Java/Kotlin 侧用 AAR（如 `com.microsoft.onnxruntime:onnxruntime-android`，Maven 实测到 1.32.0）跑推理，Python 只保留逻辑层。
