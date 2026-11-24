@@ -122,7 +122,7 @@
   例：`git diff v0.2.0-b1...HEAD --stat`
 - 评审关注：是否动了硬约束（分辨率/画布/自启/AGP 版本）、socket 超时是否仍 ≤2s、
   是否又引入 app 侧心跳、异常路径是否仍能落盘、有没有往仓库里塞大二进制
-- 通过才（**主 AI 签发后执行**，D 不碰分支）：`git checkout main && git merge --no-ff feat/<主题>` → 打新 tag（如 `v0.2-b2-verified`）
+- 通过才（**主 AI 签发后执行**，D 不碰分支）：squash 合并（API `merge_method=squash`，或 `git merge --squash feat/<主题> && git commit`）→ 打新 tag（如 `v0.2-b2-verified`）
 - 不通过：只在会话里给意见，**不动分支**
 
 ## 6. 证据留痕
@@ -155,7 +155,7 @@
 | `git checkout` / `merge` / `tag` / `reset` / `revert` | **只有主 AI** |
 | `git diff` / `log` / `status` / `show` | 所有人（只读） |
 
-- A 绝对不要 `checkout`/`reset`/`rebase`：会把主 AI 或其他会话的工作区一起切走
+- 其它会话绝对不要 `checkout`/`reset`/`rebase`：会把主 AI 或其他会话的工作区一起切走
 - 主 AI 做 `checkout`/`merge` 前先确认：没有 gradle 在跑、且无其它会话在工作区
 - 找不到能回滚的点时用最近一个 tag，不要用 `reset --hard` 盲猜
 
@@ -173,7 +173,7 @@
 2. 主 AI 小步实现 + 小步 commit（每次 commit 前跑一次 assembleDebug）
 3. 门禁：需要时跑 cv_selftest 32/32 与四段 4/4，结果写 `docs/evidence/`
 4. D 按 tag 做 diff 评审、出 PASS/FAIL（只看增量）；主 AI 只验收结论、签发合并
-5. 通过 → `merge --no-ff` 进 main → 打 tag → 改 `docs/HANDOFF.md` 结论
+5. 通过 → **squash 合并**进 main（API `merge_method=squash`） → 打 tag → 改 `docs/HANDOFF.md` 结论
 6. 不通过 → 留在 feat 分支继续修，历史不污染 main
 
 ## 11. 服务端实况（GitHub）与强制力排序
