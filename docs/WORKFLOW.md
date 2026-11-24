@@ -5,6 +5,8 @@
 
 ## 1. 角色与边界
 
+> ⚠ **2026-11-23 起角色已合并（D-026）**：取消写手 / 文档位 / 交接包位，仓库所有文件由主 AI 写并提交；只保留 1 个只读审查位（`OAS-D2`）。本节（含下表、其下各条及其子条目）为历史口径；其余章节里残留的「写手/A」按 D-027 读作「主 AI」，判活一律看 `AGENTS.md §1`。
+
 | 角色 | 会话 | 可以做什么 | 绝对不可以做什么 |
 |---|---|---|---|
 | 主 AI（调度） | 当前对话 | 建会话、投递任务、验收 D 的评审结论（不做逐行 review）、汇总、改 `docs/HANDOFF.md` 与 `docs/WORKFLOW.md` | 改 `app/`、`poc/displayserver/` 等代码 |
@@ -50,7 +52,7 @@
 
 **交接固定三步**（缺一不可）：
 
-1. **写手**：`git add <明确文件列表>` → `commit` → `push`，回执一行 = 新 sha + 本轮验证结果（编译/gate/真机）+ 未做项；
+1. **主 AI**：`git add <明确文件列表>` → `commit` → `push`，回执一行 = 新 sha + 本轮验证结果（编译/gate/真机）+ 未做项；
 2. **交接包 E**（`OAS-E1 交接包`）：写一份**七要素交接包**到 `docs/handoff/YYYYMMDD-HHMM-<BG 号>-<slug>.md`（模板见 `docs/handoff/README.md`）：
    `当前任务目标（含验收口径）/ 已完成（只写验证过的）/ 当前断点 / 关键约束 / **排除记录（已试过、不要再试）** / 当前故障 / **启动动作**`；
    **主 AI** 只做两件事：按下面两条判据**验收**（不合格打回 E 重写，不自己动笔），通过后在 `docs/HANDOFF.md §十二 接力点` 留一行指针（分支、sha、写手会话、交接包路径）；
@@ -64,9 +66,11 @@
 
 **交接期间的禁令**：换棒过程中不允许两个会话同时在同一个工作区操作 git；主 AI 在写手持有分支期间不切分支、不改代码目录。
 
-**四眼原则（4-eyes）**：A 写完不自审，主 AI 也不自审——由 D 按 §5 检查表独立出 PASS/FAIL，主 AI 只执行「按意见合并或打回」。
+**四眼原则（4-eyes）**：主 AI 写完不自审（唯一执行位）——由 D 按 §5 检查表独立出 PASS/FAIL，主 AI 只执行「按意见合并或打回」。
 
 ## 2. 分支模型（与「合并 ≠ 发布」）
+
+> **评审顺序（C 模式，D-029）**：改完 → 开 **draft PR** → CI + 审查位出 PASS → 转正式 PR → 用户签发 → squash 合并。未 PASS 不转正式、不合 main。
 
 - `main` = **trunk（持续集成主线）**：必须始终可构建、`static-gate` 绿。
   **合进来 ≠ 发布**；验收状态看 tag。
@@ -110,7 +114,7 @@
 **判定**：合并门禁不过 → 不许合入 main；发布门禁不过 → 只能打 `-bN` 预发布 tag，不许打正式版。
 
 ## 5. 评审方式（D 出 PASS/FAIL，主 AI 签发）
-**执行人**：本检查表由 D 执行、按 tag 增量出 PASS/FAIL；主 AI 只验收结论、签发合并，不逐行 review（对齐 §1 四眼原则：D 评审 → 写手修改 → 主 AI 签发）。
+**执行人**：本检查表由 D 执行、按 tag 增量出 PASS/FAIL；主 AI 只验收结论、签发合并，不逐行 review（对齐 §1 四眼原则：主 AI 实现 → D 评审 → 主 AI 签发）。
 
 **锚点用 tag，不用 `main`。** 因为 feature 分支可能就是从同一个提交切出来的，`main...HEAD` 会显示空 diff。
 
@@ -118,7 +122,7 @@
   例：`git diff v0.2.0-b1...HEAD --stat`
 - 评审关注：是否动了硬约束（分辨率/画布/自启/AGP 版本）、socket 超时是否仍 ≤2s、
   是否又引入 app 侧心跳、异常路径是否仍能落盘、有没有往仓库里塞大二进制
-- 通过才（**主 AI 签发后执行**，D 不碰分支）：`git checkout main && git merge --no-ff feat/<主题>` → 打新 tag（如 `v0.2-b2-verified`）
+- 通过才（**主 AI 签发后执行**，D 不碰分支）：squash 合并（API `merge_method=squash`，或 `git merge --squash feat/<主题> && git commit`）→ 打新 tag（如 `v0.2-b2-verified`）
 - 不通过：只在会话里给意见，**不动分支**
 
 ## 6. 证据留痕
@@ -147,17 +151,17 @@
 
 | 操作 | 允许方 |
 |---|---|
-| `git add` / `git commit` | 写手 A |
+| `git add` / `git commit` / `push` | 主 AI |
 | `git checkout` / `merge` / `tag` / `reset` / `revert` | **只有主 AI** |
 | `git diff` / `log` / `status` / `show` | 所有人（只读） |
 
-- A 绝对不要 `checkout`/`reset`/`rebase`：会把主 AI 或其他会话的工作区一起切走
-- 主 AI 做 `checkout`/`merge` 前先确认：没有 gradle 在跑、A 处于空闲
+- 其它会话绝对不要 `checkout`/`reset`/`rebase`：会把主 AI 或其他会话的工作区一起切走
+- 主 AI 做 `checkout`/`merge` 前先确认：没有 gradle 在跑、且无其它会话在工作区
 - 找不到能回滚的点时用最近一个 tag，不要用 `reset --hard` 盲猜
 
 ### 9.1 同时活跃上限（硬性，实测内存只剩 401MB / loadavg 18.6）
 
-- 同一时刻**最多 2 个活跃会话**：写手 A + 1 个只读（评审 D 或诊断 B）
+- 同一时刻**最多 2 个活跃会话**：主 AI + 1 个只读审查位（评审 D 或诊断 B）
 - C（文档）与 D 不同时开工；D 做评审期间 B 暂停，反之亦然
 - 有人要长时间占设备（四段约 4 分钟）时，另一个只读会话必须先停手
 - 超出的活写进 `docs/BACKLOG.md` 排队，**不并行开**
@@ -165,11 +169,11 @@
 
 ## 10. 一个任务的完整生命周期（照这个走）
 
-1. 主 AI 从最新已验证 tag 切分支：`git checkout -b feat/<主题> <tag>`，通知 A 当前分支名
-2. A 小步实现 + 小步 commit（每次 commit 前跑一次 assembleDebug）
+1. 主 AI 从最新已验证 tag 切分支：`git checkout -b feat/<主题> <tag>`，记录当前分支名
+2. 主 AI 小步实现 + 小步 commit（每次 commit 前跑一次 assembleDebug）
 3. 门禁：需要时跑 cv_selftest 32/32 与四段 4/4，结果写 `docs/evidence/`
 4. D 按 tag 做 diff 评审、出 PASS/FAIL（只看增量）；主 AI 只验收结论、签发合并
-5. 通过 → `merge --no-ff` 进 main → 打 tag → 改 `docs/HANDOFF.md` 结论
+5. 通过 → **squash 合并**进 main（API `merge_method=squash`） → 打 tag → 改 `docs/HANDOFF.md` 结论
 6. 不通过 → 留在 feat 分支继续修，历史不污染 main
 
 ## 11. 服务端实况（GitHub）与强制力排序
