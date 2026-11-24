@@ -182,9 +182,24 @@ object Device {
     fun appPid(pkg: String): Int = shell("pidof $pkg").trim().lineSequence().firstOrNull()
         ?.toIntOrNull() ?: 0
 
+    /**
+     * 拉起 app 到前台。
+     *
+     * ⚠ **不要改用 `monkey`**：实测它会把 `accelerometer_rotation` 写成 1（改坏设备自动旋转开关），
+     *   而本仓代码里没有任何地方会复位它。必须走 `am start`。
+     */
     @JvmStatic
-    fun startApp(pkg: String): Boolean =
-        shell("monkey -p $pkg -c android.intent.category.LAUNCHER 1").contains("Events injected")
+    fun startApp(pkg: String): Boolean {
+        val component = resolveLauncherComponent(pkg) ?: return false
+        return shell("am start -n $component").contains("Starting:")
+    }
+
+    /** 解析 launcher activity（`<pkg>/<activity>`）；失败返回 null。 */
+    private fun resolveLauncherComponent(pkg: String): String? =
+        shell("cmd package resolve-activity --brief -c android.intent.category.LAUNCHER $pkg")
+            .lineSequence()
+            .map { it.trim() }
+            .lastOrNull { it.startsWith("$pkg/") }
 
     @JvmStatic
     fun forceStop(pkg: String): Boolean = shell("am force-stop $pkg").isEmpty()
