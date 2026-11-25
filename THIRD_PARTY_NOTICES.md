@@ -57,14 +57,21 @@ Apache-2.0 要求：保留版权与许可声明、标明修改。本文件承担
 
 ## 4. 运行时依赖（仅列出，未修改）
 
+> 本节及后续 §4.x 所有第三方组件的**「标明修改」义务由本文件承担**；Apache-2.0 与 MIT 的**许可证全文副本**见 `docs/licenses/Apache-2.0.txt`、`docs/licenses/MIT.txt`。
+> NumPy（BSD-3）/ Pillow（HPND）/ CPython（PSF）**随 APK 分发但未修改**，故不另附副本，全文见各自上游——刻意取舍，避免为未修改的库重复搬运许可证。
+
 | 依赖 | 许可证 |
 |---|---|
 | Chaquopy 17.2.0（嵌入式 CPython 3.13） | MIT（Chaquopy 自身）/ PSF（CPython） |
 | OpenCV 4.13.0（`org.opencv:opencv` AAR） | Apache-2.0 |
+| ONNX Runtime 1.20.0（`onnxruntime-android` AAR） | MIT |
+| ppocr-onnx 0.0.3.9（接口/算法参考，本仓重新实现为 shim） | Apache-2.0 |
 | NumPy 1.26.2（`install "numpy==1.26.2"`，钉版本） | BSD-3-Clause |
 | Pillow（`install "pillow"` 未钉版本，由 Chaquopy 预编译轮子决定，构建注释记为 11.0.0） | HPND / PIL License |
 | AndroidX / Material Components | Apache-2.0 |
 | Kotlin / kotlinx | Apache-2.0 |
+
+许可证全文副本：`docs/licenses/Apache-2.0.txt`、`docs/licenses/MIT.txt`（本仓分发的第三方组件适用）。
 
 版本单一来源：`gradle/libs.versions.toml`（AGP 8.13.2 / Kotlin 2.3.10 / Compose BOM 2026.01.01 / Chaquopy 17.2.0 / OpenCV 4.13.0）与
 `app/build.gradle`（Python 3.13、`numpy==1.26.2`、`pillow`）；本表与那两个文件不一致时，以文件为准。
@@ -78,7 +85,6 @@ Apache-2.0 要求：保留版权与许可声明、标明修改。本文件承担
   - `app/src/main/java/org/onmyoji/oas/android/cv/CvBridge.kt`（numpy ↔ `Mat` 搬运）
   - `app/src/main/python/cv2.py`（Python shim，签名对齐；未实现的函数显式报错而非静默）
 - **未修改 OpenCV 源码**，只在 Java 侧调用其公开 API。
-  Apache-2.0 的「保留声明 + 标明修改」义务由本文件承担。
 
 ### 4.2 Chaquopy 17.2.0 — MIT（另有商业许可）
 
@@ -86,3 +92,22 @@ Apache-2.0 要求：保留版权与许可声明、标明修改。本文件承担
 - 许可证：MIT（开源项目免费）；闭源/商业分发另有商业许可，详见上游
 - 用途：嵌入式 CPython 3.13 运行时，把 `app/src/main/python/*.py` 打进 APK 并用 `PyRuntime` 调用
 - **未修改 Chaquopy 源码**，仅通过 Gradle 插件与其配置块使用。
+
+### 4.3 ONNX Runtime 1.20.0 — MIT
+
+- 上游：https://github.com/microsoft/onnxruntime
+- 引入方式：`com.microsoft.onnxruntime:onnxruntime-android` 官方 AAR（`libonnxruntime.so` + `libonnxruntime4j_jni.so`）；
+  选它是因为 Chaquopy 的 cp313 没有 `onnxruntime` Python 轮子（索引 404），而 Maven 有 AAR。
+- 暴露给 Python 的一层：`app/src/main/java/org/onmyoji/oas/android/ocr/OcrRuntime.kt`
+- **未修改 ONNX Runtime 源码**，只在 Kotlin 侧调用其公开 API。
+
+### 4.4 ppocr-onnx 0.0.3.9 — Apache License 2.0（接口与算法参考，本仓重新实现）
+
+- 上游：https://github.com/triwinds/ppocr-onnx （Apache-2.0）
+- 模型来源：PaddleOCR PP-OCRv2 识别模型 `ch_PP-OCRv2_rec_infer.onnx` + 字典 `ppocr_keys_v1.txt`（Apache-2.0）
+- **本仓未安装该 Python 包**（其硬依赖 `onnxruntime`/`pyclipper` 在 cp313 无轮子），而是写了同名 shim：
+  - `app/src/main/python/ppocronnx/predict_system.py` —— `TextSystem` / `BoxedResult` 接口
+  - `app/src/main/python/ppocronnx/rec/predict_rec.py` —— 预处理参数与上游一致（`[3,32,320]`、归一化到 [-1,1]）
+  - `app/src/main/python/ppocronnx/rec/rec_decoder.py` —— CTC 贪心解码（语义对齐上游 `CTCLabelDecode`）
+- 与上游的差异：推理改走 Kotlin `OcrRuntime`；`detect_and_ocr`（det）**未实现**，调用会抛 `NotImplementedError`
+- 模型与字典随 APK 分发于 `app/src/main/assets/ocr/`

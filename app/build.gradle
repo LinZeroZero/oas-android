@@ -126,6 +126,8 @@ dependencies {
     // OpenCV：Python 侧 cv2 走 shim，真正算在 Java/AAR 的原生实现里
     // （opencv-python 只有 cp38/cp310 轮子，Chaquopy 3.13 装不上）
     implementation libs.opencv
+    // ONNX Runtime：OCR 推理（Python 侧 ppocronnx shim 通过 JNI 调这里）
+    implementation libs.onnxruntime.android
     testImplementation libs.junit
     androidTestImplementation libs.androidx.junit
     androidTestImplementation libs.androidx.espresso.core

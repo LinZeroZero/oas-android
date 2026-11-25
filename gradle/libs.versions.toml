@@ -12,7 +12,9 @@ chaquopy = "17.2.0"
 # OpenCV 官方 Android AAR（Maven Central，Apache-2.0）。
 # 4.13.0 = 4.x 线较新版本；aar 含多 ABI，靠 abiFilters arm64-v8a 只留一份。
 opencv = "4.13.0"
-
+# ONNX Runtime Android AAR（Maven Central，MIT）。OCR 推理走这里，
+# 因为 Chaquopy 无 onnxruntime 的 cp313 轮子。
+onnxruntime = "1.20.0"
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -30,6 +32,8 @@ androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 # OpenCV Android SDK（AAR：Java 绑定 + libopencv_java4.so）
 opencv = { group = "org.opencv", name = "opencv", version.ref = "opencv" }
+# ONNX Runtime Android（AAR：JNI + libonnxruntime.so，含 NNAPI EP）
+onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxruntime" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
