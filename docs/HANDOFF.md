@@ -16,7 +16,7 @@
 - 目标：**阴阳师跑在虚拟显示器上、主屏照常用手机**，脚本按恒定 **1280×720** 画布识别/点击，**绝不改物理分辨率**。
 - 现在到哪了：阶段 0 / 阶段 1 PoC-A（**7/7**，抓帧 p50 **5.0ms**）/ 阶段 2 前半（Chaquopy **CPython 3.13.16**、`cv2.py` shim **32/32**、`oas_device.py`、`android_entry.py`）/ ADR-0001 三件套（BG-17 daemon 环境自检、BG-18 PARTIAL 锁 + reaper、BG-19 `kb run` 前移）**均已真机验证**；`tools/hang_check.sh`（BG-32 长时挂机一键检测）已入库（PR #21 squash `79d5f13`）。
 - **最大缺口（下一步就是这个）**：上游 OAS 的插拔点还没接 —— `vendor/` 下**没有** `android_impl.py`，`screenshot_methods['android']` / `click_methods['android']` **未注册**（对应 §六 待办「阶段 2 第 9 项」）。也就是说「壳 + 通道 + 采集 + 点击」全通，但**还不会自动打本**。
-- 全量待办看 `docs/BACKLOG.md`（main 基线实查：`[x]` 13 项 / `[ ]` 14 项）。**调度位换人先读 `docs/handoff/20261121-2110-main-ai.md`**（主 AI 交接包，七要素 + 会话名册 + 排除记录 + 待办优先级）；**交接包位（E<n>，当前 E2）换人先读 `docs/handoff/20261118-1359-e1-handoff.md`**；**调研兼评审（D<n>，当前 D2）换人先读 `docs/handoff/20261118-1420-d-reviewer.md`**；**写手换人先读 `docs/handoff/20261118-2335-BG-34-readonly-probe.md`**。　**（2026-11-25 更新：本节指针已过期——E/写手/文档三类包位已按 `D-026` 取消、旧包已删除；当前指针见 §十二）**
+- 全量待办看 `docs/BACKLOG.md`（条目数现查，本行不记）。**调度位换人先读 `docs/handoff/20261125-0852-main-ai.md`**（两类制：主 AI / D，见 D-026）；**（历史）** E 棒 / 写手棒 / 文档位三类已按 `D-026` 取消，对应包 `20261118-1359-e1-handoff` / `20261118-1420-d-reviewer` / `20261118-2335-BG-34-readonly-probe` 已删（复盘看 `git log -- docs/handoff/`）；当前指针见 §十二。
 - 一条必须先知道的结论：**后台进程会被系统的 cached-app freezer 冻住**（阶段 0 实测冻了 36 秒）；Realme/ColorOS 的 Hans freezer **连 FGS 也不豁免**。对策见 §十一 与 ADR-0001（PARTIAL 语义锁 + 心跳/调度前移 daemon）。
 - 想先跑一遍现状验证：`pm install -r -t dist/oas-android-debug.apk` → `am start -n org.onmyoji.oas.android/.MainActivity --ei poc_display 1` → 80 秒后看 `display_poc.txt`，应仍是 **7/7**。
 
