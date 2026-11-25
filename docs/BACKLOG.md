@@ -46,6 +46,7 @@
   - ⑫ 交接包唯一性：`docs/handoff/` 按四类分组各只允许 1 份 —— `-main-ai`（主 AI）/ `-e<N>-handoff`（交接包位）/ `-d-reviewer`（评审）/ `-BG-<号>-`（写手包）；以现有 4 包自验：`20261121-2110-main-ai` / `20261118-1359-e1-handoff` / `20261118-1420-d-reviewer` / `20261118-2335-BG-34-readonly-probe` 各归一类；任一组超 1 份即 FAIL
   - 依据：BG-36 三轮里死链 / `143 vs 123` / 7 条超限全靠人眼抓；且 ⑨ 若不加豁免会当场把本仓判 FAIL
   - 已落（2026-11-25，gate 由 8 项改 12 项）：⑨ 引用存在性（扫已入库 md，计数现跑为准）｜⑩ 存量标注｜⑪ 自述数字（三类）｜⑫ 交接包唯一性。
+  - **已知盲区**：`docs/evidence/*.md` 整目录不查引用（17 个文件），理由＝时点证据应冻结（与 ⑪③ 同口径）；可选加强＝对 evidence 只报告不 FAIL。
   - 实现偏差（三处，均有理由）：① **⑫ 按 BG-39/D-026 后的两类制实现**（`-main-ai` ≤1、`-d-reviewer` ≤1；`-e<N>-handoff`/`-BG-` 出现即 FAIL），原文「四类各 1 份」已被 BG-39 取代；② **⑨ 只校验带已知顶级目录前缀且带扩展名的 token**，裸文件名/运行时文件名/绝对路径不校验（否则 `Device.kt`、`filesDir/...`、`x.apk` 全成误报），豁免词加「未入库/跟丢」；③ **⑪③ 只比 `app/build/outputs/apk/…` 现役产物路径**，`docs/evidence/`（时点证据）与「现查/不要引用/曾为」的行豁免。
 - [x] **BG-39 交接包按 D-026 重写（四类 → 两类）** —— D-026 已取消写手/文档/交接包三岗，但 `docs/handoff/` 仍是 4 份包对应 4 个岗位：`-e1-handoff`（交接包位，已取消）、`-BG-34-readonly-probe`（写手，已取消）、`-d-reviewer`（11-18 旧包）、`-main-ai`（岗位在但内容过时）；`docs/handoff/README.md` 仍写「一个写手位 / 四类交接包 / 由交接包 E 撰写」；`docs/HANDOFF.md:405-408` 四处「（当前）」指针指向它们
   - 动作：删 3 份（`20261118-1359-e1-handoff` / `20261118-2335-BG-34-readonly-probe` / `20261118-1420-d-reviewer`）；README 改为「两类（主 AI / D）」并删「由 E 撰写」；`HANDOFF.md` 指针同步；`20261121-2110-main-ai.md` 按现行规则（C 模式、D-026 角色、§5 八条、D-030/031/032）重写
@@ -53,9 +54,9 @@
   - 证据：`docs/handoff/` 现只剩 `20261125-0852-main-ai.md` + README；README 已改两类；`HANDOFF.md §十二` 指针已同步；旧 4 包已 `git rm`
   - 归属：主 AI；抽审（记录类，不阻塞）
 
-- [ ] **BG-45 CI 提交规范差异**：CI 比本地 `gate.sh` 多一条 Conventional Commits 检查（`Merge*|Revert*` 豁免、大小写敏感）；merge 提交标题须以大写 `Merge` 开头；建议落 `docs/WORKFLOW.md` 提交纪律节
-- [ ] **BG-46 draft PR 转正通道**：REST `PATCH draft:false` 返回 200 但静默不生效；须 GraphQL `markPullRequestReadyForReview`（用 `node_id`）；建议落 `WORKFLOW §5`
-- [ ] **BG-47 AGENTS 余量告急**：46 行 / 5,057 B（上限 50 / 5,120，仅余 63 B）；任何新增前必须先删一条（D-015）；顺带给「杀自起后台进程」补自查命令
+- [x] **BG-45 CI 提交规范差异**：CI 比本地 `gate.sh` 多一条 Conventional Commits 检查（`Merge*|Revert*` 豁免、大小写敏感）；merge 提交标题须以大写 `Merge` 开头；已落 `docs/WORKFLOW.md §3`（2026-11-25）
+- [x] **BG-46 draft PR 转正通道**：REST `PATCH draft:false` 返回 200 但静默不生效；须 GraphQL `markPullRequestReadyForReview`（用 `node_id`）；已落 `docs/WORKFLOW.md §5`（2026-11-25）
+- [x] **BG-47 AGENTS 余量告急**：46 行 / 5,057 B（上限 50 / 5,120，仅余 63 B）；任何新增前必须先删一条（D-015）；「杀自起后台进程」自查命令已补（`pgrep -f 'logcat -s'`）；余量重算：`wc -l -c AGENTS.md` 现查
 ## 三、设备侧隐患（P2）
 
 - [ ] **BG-06 `screen_off_timeout=1800000`（30 分钟）疑似被改坏未还原**
