@@ -43,4 +43,4 @@
 ## 5. 真机实验收工定序（缺一不算完）
 
 **先确认真响铃 → 再亮屏 → 再把 Operit 拉回前台**；销毁所有 `oas-*` 虚拟屏、停 daemon 与游戏、`accelerometer_rotation` 复位 0、清 `/data/local/tmp` 本轮临时文件。
-- 收工还要：杀自己起的后台进程（`logcat -s … &` 等）、清 `/sdcard` 下自己复制的临时文件
+- 收工还要：杀自起后台进程（`logcat -s … &` 等）；清 `/sdcard/oas_*`（自查 `ls /sdcard/oas_*` 应空）
