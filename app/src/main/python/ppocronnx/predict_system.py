@@ -24,6 +24,7 @@ from typing import Iterable, List, Optional
 import numpy as np
 
 from .rec.predict_rec import TextRecognizer
+from .det.predict_det import TextDetector
 
 __all__ = ["TextSystem", "BoxedResult"]
 
@@ -100,13 +101,55 @@ class TextSystem(object):
         return rec_res
 
     def detect_and_ocr(self, img: np.ndarray, drop_score=0.5, unclip_ratio=None, box_thresh=None):
-        """全图检测 + 识别。本仓第一版未实现（缺 det + pyclipper/shapely）。
+        """全图检测 + 识别（BG-41 第一版：det + 矩形近似 unclip + rec）。
 
-        抛 NotImplementedError 而不是返回空列表 —— 静默返回 [] 会让上游把
+        unclip_ratio / box_thresh 可覆盖默认值（对齐上游签名）。
+        检测不可用时**抛异常而不是返回空列表** —— 静默返回 [] 会让上游把
         「检测失败」误当成「画面没字」，进而做出错误决策。
         """
-        raise NotImplementedError(
-            "detect_and_ocr 尚未实现（BG-40 第一版只做单行 rec）。"
-            "det 需要 pyclipper/shapely，Chaquopy cp313 无轮子；"
-            "若要支持全图检测，需先解决这两个原生依赖。"
-        )
+        if img is None or getattr(img, "size", 0) == 0:
+            return []
+        detector = self._detector(unclip_ratio, box_thresh)
+        boxes = detector(img)
+        if not boxes:
+            return []
+
+        crops, metas = [], []
+        for (x0, y0, x1, y1) in boxes:
+            crop = img[y0:y1, x0:x1]
+            if getattr(crop, "size", 0) == 0:
+                continue
+            crops.append(crop)
+            # 与上游一致：box 用 4 个角点（左上→右上→右下→左下）表示
+            metas.append(np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], dtype=np.int32))
+        if not crops:
+            return []
+
+        rec_res, _elapse = self.text_recognizer(crops)
+        results = []
+        for (text, score), box in zip(rec_res, metas):
+            if score is None or float(score) < drop_score:
+                continue
+            results.append(BoxedResult(box, None, text, float(score)))
+        return results
+
+    def _detector(self, unclip_ratio=None, box_thresh=None):
+        """惰性建 det；未就绪时抛带原因的异常（不静默降级）。"""
+        det = getattr(self, "_det_instance", None)
+        if det is None:
+            try:
+                from ..rec.predict_rec import _runtime
+                rt = _runtime()
+                if hasattr(rt, "isDetReady") and not bool(rt.isDetReady()):
+                    reason = str(rt.detLastError()) if hasattr(rt, "detLastError") else "未知"
+                    raise NotImplementedError("det 未就绪（%s）" % reason)
+            except ImportError:
+                pass
+            kwargs = {}
+            if unclip_ratio:
+                kwargs["unclip_ratio"] = 1.0 + float(unclip_ratio)
+            if box_thresh:
+                kwargs["bin_thr"] = float(box_thresh)
+            det = TextDetector(**kwargs)
+            self._det_instance = det
+        return det
