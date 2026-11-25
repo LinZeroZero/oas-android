@@ -17,7 +17,7 @@
 - motion **可投递**、仅 **key 需 focused window**（AOSP `:2313`）；⚠ **`frames` / 整帧 md5 都不能当点击判据**（静止画面仍有 ~1.2% 像素在动）——归因与阈值见 `docs/evidence/20261125-0433-BG-34-observable-criteria.md`
 
 ## 在飞
-- **无在飞 PR**（上一轮已合并回 main；要具体 sha 现查 `git log --oneline -1`，本文件不记，见 D-013/D-017）
+- **2 个在飞 PR（均 draft；`mergeable_state` 现查，不写死瞬时值）**：① BG-40 OCR 真机验证 ② AGENTS 两条规则；PR 号现查不记（D-017）
 
 ## 下一步（按序做）
 1. **`module/device` 烟测**：放开 exclude + 摘 `platform2`（pydantic）与 `scrcpy`（av）→ 装机（需用户给时点）
