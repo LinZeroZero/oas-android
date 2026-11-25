@@ -418,7 +418,7 @@ fi
 # 实现收窄（必须如此，否则豁免清单只会越加越长）：只校验带**已知顶级目录前缀**
 # （app/ docs/ poc/ tools/ vendor/ patches/ gradle/ dist/ build/）**且带扩展名**的 token。
 # 裸文件名（`Device.kt`）、运行时文件名（`filesDir/oas/cache/bench.json`、`xxx.apk`）、
-# 绝对路径、含空格/占位符的 token 一律不校验 —— 它们不是「仓库内的文件引用」。
+# 绝对路径、含空格/占位符的 token、以及 `*/build/*` 构建产物一律不校验 —— 它们不是「仓库内的文件引用」。
 if [ "${OAS_SKIP_REF_CHECK:-}" = "1" ]; then
     echo "[9/12] SKIP  OAS_SKIP_REF_CHECK=1"
 elif ! command -v git >/dev/null 2>&1 || ! git rev-parse --git-dir >/dev/null 2>&1; then
@@ -441,6 +441,7 @@ else
                 if (t ~ /YYYYMMDD/) continue
                 if (t ~ /^\//) continue
                 if (t !~ /^(app|docs|poc|tools|vendor|patches|gradle|dist|build)\//) continue
+                if (t ~ /(^|\/)build\//) continue   # 构建产物（CI 上没有 APK）不按文件名校验
                 if (t !~ /\.(md|sh|py|kt|kts|java|jar|apk|json|txt|yml|yaml|toml|properties|patch|gradle)$/) continue
                 printf "%s\t%s\n", FILENAME, t
             }
