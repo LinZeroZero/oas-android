@@ -69,8 +69,9 @@ class TextSystem(object):
         self.use_angle_cls = use_angle_cls
         self.box_thresh = box_thresh
         self.unclip_ratio = unclip_ratio
-        # det 第一版不提供；保留字段以便将来接入
-        self.text_detector = None
+        # det：BG-41 起提供实例。上游（SixRealms/oas_ocr.py）会直接读写
+        # model.text_detector.box_thresh，所以这里必须是真对象而不是 None。
+        self.text_detector = TextDetector()
         self.text_classifier = None
         self.text_recognizer = TextRecognizer(
             rec_model_path=rec_model_path, ort_providers=ort_providers
@@ -134,22 +135,24 @@ class TextSystem(object):
         return results
 
     def _detector(self, unclip_ratio=None, box_thresh=None):
-        """惰性建 det；未就绪时抛带原因的异常（不静默降级）。"""
-        det = getattr(self, "_det_instance", None)
+        """复用 `self.text_detector`（上游会直接读写它的属性）；未就绪时抛带原因的异常。"""
+        det = self.text_detector
         if det is None:
-            try:
-                from ..rec.predict_rec import _runtime
-                rt = _runtime()
-                if hasattr(rt, "isDetReady") and not bool(rt.isDetReady()):
-                    reason = str(rt.detLastError()) if hasattr(rt, "detLastError") else "未知"
-                    raise NotImplementedError("det 未就绪（%s）" % reason)
-            except ImportError:
-                pass
-            kwargs = {}
-            if unclip_ratio:
-                kwargs["unclip_ratio"] = 1.0 + float(unclip_ratio)
-            if box_thresh:
-                kwargs["bin_thr"] = float(box_thresh)
-            det = TextDetector(**kwargs)
-            self._det_instance = det
+            det = TextDetector()
+            self.text_detector = det
+        if unclip_ratio is not None:
+            # 上游语义是「膨胀距离 ≈ 面积/周长 ×ratio」；本仓是矩形放大倍数，
+            # 两者不可直接换算（早期写成 1+ratio 会把 1.6 变成 2.6 倍框），
+            # 这里按倍数理解并夹到 [1.0, 2.0]。
+            det.unclip_ratio = max(1.0, min(2.0, float(unclip_ratio)))
+        if box_thresh is not None:
+            det.bin_thr = float(box_thresh)
+        try:
+            from ..rec.predict_rec import _runtime
+            rt = _runtime()
+            if hasattr(rt, "isDetReady") and not bool(rt.isDetReady()):
+                reason = str(rt.detLastError()) if hasattr(rt, "detLastError") else "未知"
+                raise NotImplementedError("det 未就绪（%s）" % reason)
+        except ImportError:
+            pass
         return det

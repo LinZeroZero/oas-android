@@ -110,5 +110,5 @@ Apache-2.0 要求：保留版权与许可声明、标明修改。本文件承担
   - `app/src/main/python/ppocronnx/rec/predict_rec.py` —— 预处理参数与上游一致（`[3,32,320]`、归一化到 [-1,1]）
   - `app/src/main/python/ppocronnx/det/predict_det.py` —— det 预处理 + **纯 numpy DB 后处理**（矩形近似 unclip，替代 pyclipper/shapely）
   - `app/src/main/python/ppocronnx/rec/rec_decoder.py` —— CTC 贪心解码（语义对齐上游 `CTCLabelDecode`）
-- 与上游的差异：推理改走 Kotlin `OcrRuntime`；`detect_and_ocr`（det）**未实现**，调用会抛 `NotImplementedError`
+- 与上游的差异：推理改走 Kotlin `OcrRuntime`；`detect_and_ocr`（det）**已实现**（BG-41：PP-OCRv3 det + 纯 numpy DB 后处理，矩形近似 unclip）；det 未就绪时抛带原因的异常，不静默返回空
 - 模型与字典随 APK 分发于 `app/src/main/assets/ocr/`
