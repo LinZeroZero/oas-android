@@ -878,3 +878,47 @@ def _finish_selftest(cache, checks, info, perf, fatal):
     except BaseException:  # noqa: BLE001
         pass
     return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def ocr_probe() -> str:
+    """BG-40 OCR 烟测：ppocronnx shim -> Kotlin OcrRuntime -> ONNX Runtime AAR。
+
+    用 PIL 默认字体画 ASCII 数字（不依赖中文字体），走完整链路：
+    预处理 -> Java OcrRuntime.runRec（argmax 在 Kotlin 侧）-> CTC 解码。
+    """
+    try:
+        import numpy as np
+        from PIL import Image, ImageDraw, ImageFont
+        from ppocronnx.predict_system import TextSystem
+
+        try:
+            font = ImageFont.load_default(size=48)
+        except TypeError:  # 老版 PIL 不支持 size
+            font = ImageFont.load_default()
+        canvas = Image.new("RGB", (140, 64), (20, 20, 25))
+        ImageDraw.Draw(canvas).text((6, 6), "123", font=font, fill=(240, 240, 240))
+        img = np.array(canvas)[:, :, ::-1].copy()  # RGB -> BGR
+
+        t0 = time.time()
+        system = TextSystem()
+        init_ms = (time.time() - t0) * 1000.0
+
+        t1 = time.time()
+        hit = system.ocr_single_line(img)
+        run_ms = (time.time() - t1) * 1000.0
+
+        out = {
+            "ok": bool(hit and hit[0]),
+            "text": (hit[0] if hit else None),
+            "score": (round(float(hit[1]), 4) if hit else None),
+            "init_ms": round(init_ms, 1),
+            "run_ms": round(run_ms, 1),
+        }
+        log("OCR probe: " + json.dumps(out, ensure_ascii=False))
+        return json.dumps(out, ensure_ascii=False)
+    except BaseException:  # noqa: BLE001
+        import traceback
+
+        err = traceback.format_exc()
+        log("OCR probe FAILED: " + err.replace("\n", " | ")[:1500])
+        return json.dumps({"ok": False, "error": err}, ensure_ascii=False)

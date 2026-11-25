@@ -36,6 +36,10 @@ object OcrRuntime {
     @Volatile
     private var lastError: String = ""
 
+    /** 保存 Application context，供 [readAssetText] 使用。 */
+    @Volatile
+    private var appContext: Context? = null
+
     @JvmStatic
     fun lastError(): String = lastError
 
@@ -51,6 +55,7 @@ object OcrRuntime {
     @JvmStatic
     @Synchronized
     fun init(context: Context, useNnapi: Boolean): Boolean {
+        appContext = context.applicationContext
         if (session != null) return true
         return try {
             val modelFile = copyAssetOnce(context, MODEL_ASSET)
@@ -112,6 +117,19 @@ object OcrRuntime {
                 return res
             }
         }
+    }
+
+    /**
+     * 读 assets 下任意文本文件，返回全文。
+     *
+     * 供 Python 侧读字典用：Chaquopy 里 `import java.io.X` 不成立
+     * （2026-11-25 真机报 `ModuleNotFoundError: No module named 'java.io'`），
+     * 而 Kotlin 的 `assets.open(...).bufferedReader()` 是已验证路径（模型加载就在用）。
+     */
+    @JvmStatic
+    fun readAssetText(assetPath: String): String {
+        val ctx = appContext ?: throw IllegalStateException("OcrRuntime.init 未调用")
+        return ctx.assets.open(assetPath).bufferedReader(Charsets.UTF_8).use { it.readText() }
     }
 
     /** 类别数（= 1 blank + 字典 + 1 space），供 Python 侧校验 */

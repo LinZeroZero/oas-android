@@ -102,11 +102,14 @@ class TextRecognizer(object):
 
 
 def _load_dict() -> List[str]:
-    """从 assets/ocr/ppocr_keys_v1.txt 读字典（6623 行）。"""
-    from com.chaquo.python import Python
+    """从 assets/ocr/ppocr_keys_v1.txt 读字典（6623 行）。
 
-    assets = Python.getPlatform().getApplication().getAssets()
-    with assets.open("ocr/ppocr_keys_v1.txt") as f:
-        data = f.read()
-    text = data.decode("utf-8") if isinstance(data, bytes) else data
-    return [line.rstrip("\r\n") for line in text.split("\n") if line != ""]
+    Chaquopy 两个坑（2026-11-25 真机实测，proot 侧测不到）：
+      1. `import java.io.X` -> ModuleNotFoundError: No module named 'java.io'；
+      2. assets.open() 返回 Java InputStream：不支持 with，无参 read() 只读 1 字节。
+    故改由 Kotlin 侧 OcrRuntime.readAssetText() 读全文（它的 assets 路径已验证可用）。
+    """
+    CR, LF = chr(13), chr(10)
+    runtime = _runtime()  # 幂等：确保 OcrRuntime.init 已执行
+    text = str(runtime.readAssetText("ocr/ppocr_keys_v1.txt"))
+    return [line.rstrip(CR) for line in text.split(LF) if line != ""]
