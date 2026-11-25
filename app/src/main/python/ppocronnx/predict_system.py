@@ -11,10 +11,11 @@
 ⚠ 能力边界（2026-11-25 按实际调用链核实，勿再引用「.ocr() 121 处只走 rec」的旧说法）：
   `RuleOcr.ocr()` 是**分发器**（`module/atom/ocr.py:31`），按 mode 转到 `module/ocr/sub_ocr.py` 的 6 个类：
     Full     -> `detect_and_ocr`   ← det，**本版不可用**（约 42 个 O_XXX 实例）
-    Quantity -> `detect_and_ocr`   ← det，**本版不可用**（约 22 个）
-    Single   -> `ocr_single_line`  ← rec ✅；**失败时会 fallback 到 detect_and_ocr（抛异常）**
+    Quantity -> `detect_and_ocr`   ← det，**本版不可用**（约 16 个活跃实例；另有 6 行注释掉的样例）
+    Single   -> `ocr_single_line`  ← rec ✅；**未命中（空串/低于阈值）时 fallback 到 detect_and_ocr → 抛异常**
     Digit / DigitCounter / Duration -> 继承 Single，同样 rec 优先
-  即：Full / Quantity 两模式完全不可用；Single 系主路径可用，但 rec 失败时不会优雅降级。
+  即：Full / Quantity 完全不可用；Single 系**仅 rec 命中时可用**——「画面没有该字」是常态，
+  此时会 fallback 到 det 并抛 NotImplementedError，**调用方必须 try/except**。
 
 上游接口与实现参考：ppocr-onnx 0.0.3.9（Apache-2.0，triwinds/ppocr-onnx）。
 """

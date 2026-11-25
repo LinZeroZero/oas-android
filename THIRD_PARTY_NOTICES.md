@@ -57,6 +57,9 @@ Apache-2.0 要求：保留版权与许可声明、标明修改。本文件承担
 
 ## 4. 运行时依赖（仅列出，未修改）
 
+> 本节及后续 §4.x 所有第三方组件的**「标明修改」义务由本文件承担**；Apache-2.0 与 MIT 的**许可证全文副本**见 `docs/licenses/Apache-2.0.txt`、`docs/licenses/MIT.txt`。
+> 未随本仓分发的依赖（NumPy BSD-3 / Pillow HPND / CPython PSF）**不另附副本**，全文见各自上游——这是刻意的取舍，避免为未修改的库重复搬运许可证。
+
 | 依赖 | 许可证 |
 |---|---|
 | Chaquopy 17.2.0（嵌入式 CPython 3.13） | MIT（Chaquopy 自身）/ PSF（CPython） |
@@ -108,4 +111,3 @@ Apache-2.0 要求：保留版权与许可声明、标明修改。本文件承担
   - `app/src/main/python/ppocronnx/rec/rec_decoder.py` —— CTC 贪心解码（语义对齐上游 `CTCLabelDecode`）
 - 与上游的差异：推理改走 Kotlin `OcrRuntime`；`detect_and_ocr`（det）**未实现**，调用会抛 `NotImplementedError`
 - 模型与字典随 APK 分发于 `app/src/main/assets/ocr/`
-  Apache-2.0 的「保留声明 + 标明修改」义务由本文件承担。
