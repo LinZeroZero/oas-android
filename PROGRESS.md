@@ -17,13 +17,13 @@
 - motion **可投递**、仅 **key 需 focused window**（AOSP `:2313`）；⚠ **`frames` / 整帧 md5 都不能当点击判据**（静止画面仍有 ~1.2% 像素在动）——归因与阈值见 `docs/evidence/20261125-0433-BG-34-observable-criteria.md`
 
 ## 在飞
-- **无在飞 PR**（数量现查 GitHub `state=open`，本文件不写死瞬时值；PR 号不记，D-013/D-017）
+- **无在飞 PR**（数量现查；PR 号不记，D-013/D-017）
 
 ## 下一步（按序做）
 1. **真实阴阳师截图复验 OCR**（中文/描边/复杂背景；需占机 + 用户给时点）
 2. **BG-42 OCR 提速定标**（n≥5 取中位数；`FloatBuffer` 直传列第一优先，另测 release 构建/预热）
 3. **BG-41 det**：Full/Quantity ~58 对象可用（两条路：纯 numpy unclip / 矩形框近似）
-4. **`module/device` 烟测**（放开 exclude + 摘 `platform2`/`scrcpy`，需用户给时点）｜ **BG-38**（gate ⑨⑩⑪⑫）/ **BG-37**（⑦ 只判新增）
+4. **`module/device` 烟测**（放开 exclude + 摘 `platform2`/`scrcpy`，需用户给时点）｜ gate 已扩到 12 项（BG-38/37 已落）
 
 ## 阻塞 / 等人
 - 真机类实验（熄屏、占机）必须先得到用户给的时点

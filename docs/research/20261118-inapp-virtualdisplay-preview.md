@@ -22,7 +22,7 @@
 
 ## 二、Q1 呈现通路：ALAS-AOS 怎么把虚拟屏显示到 App 里（实读）
 
-- 文件：`app/app/src/main/java/com/aliothmoon/maafw/remote/internal/VirtualDisplayManager.kt`
+- 文件：`VirtualDisplayManager.kt`（ALAS-AOS 上游文件，未入库）
 - VD 的输出面 = `NativeBridgeLib.setupNativeCapturer(w, h)` 返回的 **native Surface**
 - App 侧：`setMonitorSurface(Surface?)` → `NativeBridgeLib.setPreviewSurface`，把捕获到的内容贴到 App 的预览控件上
 - **不是** `DisplayMirror` 直连；也不是 App 侧自建 VD

@@ -36,14 +36,17 @@
   - 关闭依据：`docs/HANDOFF.md §十二 已知坑` 已入册 + 交接包 §4 复述（`docs/evidence/20261115-0057-BG-21-pilot.md §0` 为原始发现）
 - [x] **BG-36 README / HANDOFF 状态腐坏收口** —— `README:11` 的「下一步」与 `README:86` 的 APK 字节过期、缺四层进度；`HANDOFF §零`「插拔点未接 / 待办 13:14」作废；`docs/handoff/20261118-2200-main-ai.md` 已被取代
   - 证据：README「进度分档（2026-11-22）」表 + `HANDOFF §零` ⏳ 行；`docs/handoff/` 剩 4 包 + README
-- [ ] **BG-37 DECISIONS 单条字节超限 + gate ⑦ 不校验单条** —— 现查 **7 条**超 300 B：D-010 342 / D-012 331 / D-015 391 / D-016 391 / D-017 363 / D-018 320 / D-019 411；gate ⑦ 只 `grep -c` 条数、不判单条
+- [x] **BG-37 DECISIONS 单条字节超限 + gate ⑦ 不校验单条** —— 现查 **7 条**超 300 B：D-010 342 / D-012 331 / D-015 391 / D-016 391 / D-017 363 / D-018 320 / D-019 411；gate ⑦ 只 `grep -c` 条数、不判单条
   - 决定（D-031）：分段生效——只判新增条目 ≤300 B；存量 7 条已标「历史超标」豁免；⑦ 待加单条校验（仅新增）
-- [ ] **BG-38 gate 加文档类机器判据（4 项）** —— ⑨ 引用存在性 ⑩ DECISIONS 单条字节 ⑪ 自述数字比对 ⑫ 交接包唯一性
+  - 已落（2026-11-25）：⑦ 增「D-031 之后的新增条目（编号 >31）单条 >300 B → FAIL」；⑩ 增「存量超限必须标『历史超标』」。负向实测：造 D-099(374B) → `[7/12] FAIL decisions-entry-too-big`
+- [x] **BG-38 gate 加文档类机器判据（4 项）** —— ⑨ 引用存在性 ⑩ DECISIONS 单条字节 ⑪ 自述数字比对 ⑫ 交接包唯一性
   - ⑨ 引用存在性：只查 `README.md` 与 `docs/**/*.md`，**排除** `docs/HANDOFF.md`（历史台账）与 `docs/handoff/*.md`（历史包本身）；相对链接按所在文件解析、代码块内路径也校验；跳过含 `YYYYMMDD` 的模板占位；**同一行内出现「已删 / 已被取代 / 已作废」标注则放行**；路径含 `*` 或以 `/` 结尾（通配/目录）不按文件名校验；不存在且无标注即 FAIL
   - ⑩ DECISIONS 新增条目 ≤300 B（从 D-031 之后算，存量豁免）：先**告警不 FAIL**；转 FAIL 条件 = **BG-37 关闭当日**
   - ⑪ 自述数字比对（只查三类，其余不查）：① 任意 `.md` 里同一行出现 `<docs/handoff/某包>.md` 与「N 行」时，用 `wc -l` 与该包实际行数比对（这类描述通常写在 `docs/HANDOFF.md` / `docs/handoff/README.md`，不在包自身）；**引用的包不存在则 SKIP**；② `[x] N 项 / [ ] M 项` vs BACKLOG 实际计数；③ 提到 APK 字节时 vs `ls -l`，**产物不存在则 SKIP**；不一致即 FAIL
   - ⑫ 交接包唯一性：`docs/handoff/` 按四类分组各只允许 1 份 —— `-main-ai`（主 AI）/ `-e<N>-handoff`（交接包位）/ `-d-reviewer`（评审）/ `-BG-<号>-`（写手包）；以现有 4 包自验：`20261121-2110-main-ai` / `20261118-1359-e1-handoff` / `20261118-1420-d-reviewer` / `20261118-2335-BG-34-readonly-probe` 各归一类；任一组超 1 份即 FAIL
   - 依据：BG-36 三轮里死链 / `143 vs 123` / 7 条超限全靠人眼抓；且 ⑨ 若不加豁免会当场把本仓判 FAIL
+  - 已落（2026-11-25，gate 由 8 项改 12 项）：⑨ 引用存在性（扫已入库 md，计数现跑为准）｜⑩ 存量标注｜⑪ 自述数字（三类）｜⑫ 交接包唯一性。
+  - 实现偏差（三处，均有理由）：① **⑫ 按 BG-39/D-026 后的两类制实现**（`-main-ai` ≤1、`-d-reviewer` ≤1；`-e<N>-handoff`/`-BG-` 出现即 FAIL），原文「四类各 1 份」已被 BG-39 取代；② **⑨ 只校验带已知顶级目录前缀且带扩展名的 token**，裸文件名/运行时文件名/绝对路径不校验（否则 `Device.kt`、`filesDir/...`、`x.apk` 全成误报），豁免词加「未入库/跟丢」；③ **⑪③ 只比 `app/build/outputs/apk/…` 现役产物路径**，`docs/evidence/`（时点证据）与「现查/不要引用/曾为」的行豁免。
 - [x] **BG-39 交接包按 D-026 重写（四类 → 两类）** —— D-026 已取消写手/文档/交接包三岗，但 `docs/handoff/` 仍是 4 份包对应 4 个岗位：`-e1-handoff`（交接包位，已取消）、`-BG-34-readonly-probe`（写手，已取消）、`-d-reviewer`（11-18 旧包）、`-main-ai`（岗位在但内容过时）；`docs/handoff/README.md` 仍写「一个写手位 / 四类交接包 / 由交接包 E 撰写」；`docs/HANDOFF.md:405-408` 四处「（当前）」指针指向它们
   - 动作：删 3 份（`20261118-1359-e1-handoff` / `20261118-2335-BG-34-readonly-probe` / `20261118-1420-d-reviewer`）；README 改为「两类（主 AI / D）」并删「由 E 撰写」；`HANDOFF.md` 指针同步；`20261121-2110-main-ai.md` 按现行规则（C 模式、D-026 角色、§5 八条、D-030/031/032）重写
   - 前置（**已解除**）：包内唯一独有知识「`monkey` 会把 `accelerometer_rotation` 写成 1」已落到 `Device.kt` KDoc，并有真机单变量对照证据（`docs/evidence/20261125-0617-monkey-vs-amstart-rotation-真机对照.md`）；`Device.startApp()` 已改 `am start`（#59）
