@@ -413,7 +413,7 @@ else
 fi
 
 # ⑨ 引用存在性（BG-38）：README.md 与 docs/**/*.md 里反引号包住的「仓库内路径」必须存在
-# 豁免（BG-38 定稿）：docs/HANDOFF.md（历史台账）、docs/handoff/*.md（历史包本身）；
+# 豁免：docs/HANDOFF.md（历史台账）、docs/handoff/*.md（历史包本身）、docs/evidence/*.md（时点证据，与 ⑪③ 同口径）；
 # 同行出现「已删/已被取代/已作废/未入库/跟丢」；含 `*` 或以 `/` 结尾；含 YYYYMMDD 的模板占位。
 # 实现收窄（必须如此，否则豁免清单只会越加越长）：只校验带**已知顶级目录前缀**
 # （app/ docs/ poc/ tools/ vendor/ patches/ gradle/ dist/ build/）**且带扩展名**的 token。
@@ -424,28 +424,37 @@ if [ "${OAS_SKIP_REF_CHECK:-}" = "1" ]; then
 elif ! command -v git >/dev/null 2>&1 || ! git rev-parse --git-dir >/dev/null 2>&1; then
     echo "[9/12] SKIP  不在 git 仓库内"
 else
-    REF_FILES=$(git ls-files 'README.md' 'docs/*.md' 2>/dev/null |
-        grep -v '^docs/HANDOFF\.md$' | grep -v '^docs/handoff/')
+    # 枚举必须走 -z + core.quotePath=false：否则中文文件名会被加引号/转义，
+    # 未加引号展开时 awk 会在第一个引号路径处退出，后面的文件变成「静默没扫」。
+    git -c core.quotePath=false ls-files -z 'README.md' 'docs/*.md' 2>/dev/null |
+        tr '\0' '\n' > build/gate-files.txt
+    grep -v '^docs/HANDOFF\.md$' build/gate-files.txt | grep -v '^docs/handoff/' | grep -v '^docs/evidence/' > build/gate-files-scan.txt
     # 说明：只扫已入库文件（未 add 的新文件要等 git add 后才入检；CI/pre-push 阶段均已入库）
-    REFS=$(LC_ALL=C awk '
-        /已删|已被取代|已作废|未入库|跟丢/ { next }
-        {
-            line=$0
-            while (match(line, /`[^`]+`/)) {
-                t=substr(line, RSTART+1, RLENGTH-2)
-                line=substr(line, RSTART+RLENGTH)
-                if (t ~ /[ \t]/) continue
-                if (t ~ /^https?:/) continue
-                if (t ~ /\*/) continue
-                if (t ~ /\/$/) continue
-                if (t ~ /YYYYMMDD/) continue
-                if (t ~ /^\//) continue
-                if (t !~ /^(app|docs|poc|tools|vendor|patches|gradle|dist|build)\//) continue
-                if (t ~ /(^|\/)build\//) continue   # 构建产物（CI 上没有 APK）不按文件名校验
-                if (t !~ /\.(md|sh|py|kt|kts|java|jar|apk|json|txt|yml|yaml|toml|properties|patch|gradle)$/) continue
-                printf "%s\t%s\n", FILENAME, t
-            }
-        }' $REF_FILES 2>/dev/null)
+    : > build/gate-refs.txt
+    while IFS= read -r rf; do
+        [ -n "$rf" ] || continue
+        LC_ALL=C awk -v F="$rf" '
+            /已删|已被取代|已作废|未入库|跟丢/ { next }
+            {
+                line=$0
+                while (match(line, /`[^`]+`/)) {
+                    t=substr(line, RSTART+1, RLENGTH-2)
+                    line=substr(line, RSTART+RLENGTH)
+                    if (t ~ /[ \t]/) continue
+                    if (t ~ /^https?:/) continue
+                    if (t ~ /\.\.\./) continue          # 省略号缩写（如 `app/.../bridge/X.java`）不是真路径
+                    if (t ~ /\*/) continue
+                    if (t ~ /\/$/) continue
+                    if (t ~ /YYYYMMDD/) continue
+                    if (t ~ /^\//) continue
+                    if (t !~ /^(app|docs|poc|tools|vendor|patches|gradle|dist|build)\//) continue
+                    if (t ~ /(^|\/)build\//) continue     # 构建产物（CI 上没有 APK）
+                    if (t !~ /\.(md|sh|py|kt|kts|java|jar|apk|json|txt|yml|yaml|toml|properties|patch|gradle)$/) continue
+                    printf "%s\t%s\n", F, t
+                }
+            }' "$rf" >> build/gate-refs.txt
+    done < build/gate-files-scan.txt
+    REFS=$(cat build/gate-refs.txt)
     : > build/gate-dead.txt
     while IFS="	" read -r rf t; do
         [ -n "$t" ] || continue
