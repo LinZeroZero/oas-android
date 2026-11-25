@@ -54,7 +54,7 @@
   - 证据：`docs/handoff/` 现只剩 `20261125-0852-main-ai.md` + README；README 已改两类；`HANDOFF.md §十二` 指针已同步；旧 4 包已 `git rm`
   - 归属：主 AI；抽审（记录类，不阻塞）
 
-- [x] **BG-45 CI 提交规范差异**：CI 比本地 `gate.sh` 多一条 Conventional Commits 检查（`Merge*|Revert*` 豁免、大小写敏感）；merge 提交标题须以大写 `Merge` 开头；已落 `docs/WORKFLOW.md §3`（2026-11-25）
+- [x] **BG-45 CI 提交规范差异**：CI 比本地 `gate.sh` 多一条 Conventional Commits 检查。**已治本**（`fix/gate-no-merges`：`git rev-list --no-merges`，按对象类型豁免 merge —— 同时堵住「`Merge …` 开头的普通提交可绕过」的反向漏洞）；`WORKFLOW §3` 描述已同步（2026-11-25）
 - [x] **BG-46 draft PR 转正通道**：REST `PATCH draft:false` 返回 200 但静默不生效；须 GraphQL `markPullRequestReadyForReview`（用 `node_id`）；已落 `docs/WORKFLOW.md §5`（2026-11-25）
 - [x] **BG-47 AGENTS 余量告急**：46 行 / 5,057 B（上限 50 / 5,120，仅余 63 B）；任何新增前必须先删一条（D-015）；「杀自起后台进程」自查命令已补（`pgrep -f 'logcat -s'`）；余量重算：`wc -l -c AGENTS.md` 现查
 ## 三、设备侧隐患（P2）
