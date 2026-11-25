@@ -211,6 +211,7 @@
   - 验收：`BaseCor.ocr_single_line()` 在 APK 内对一张 ROI 返回非空文本且不抛异常；证据落 `docs/evidence/`
   - 归属：主 AI；必审（改 app/）
 - [ ] **BG-41 OCR det：让 Full/Quantity（~58 对象）可用**：两条替代路——纯 numpy unclip / 矩形框近似；验收：`detect_and_ocr` 整屏返回非空且不抛 `NotImplementedError`；归属：主 AI，必审（改 app/）
+  - 进展（2026-11-25 spike，证据 `docs/evidence/20261125-2325-BG-41-det-spike-numpy-db.md`）：**可行性成立**——无 cv2/pyclipper/scipy，纯 numpy（4x 降采样 BFS 连通域 + 矩形外扩 15% 近似 unclip）跑通 det→裁剪→rec；真实中文界面 0.88–1.00；det 382ms + 25 框 rec 981ms ≈ 1.4s/整屏（n=1，D-018 不作结论）。建议第一版用矩形近似 + `max_boxes=20`、`thr=0.3`；多边形 unclip 后置。
 - [ ] **BG-42 OCR 提速定标（n≥5 取中位数，D-018）**：`FloatBuffer`/直接内存替代 numpy→Java `FloatArray` 逐元素转换（第一优先）；另测 release 构建、预热；真机 174.4 vs proot 66–68 ms
 - [ ] **BG-43 真实阴阳师截图复验 OCR**：现只验过 PIL 合成数字图，中文/描边/复杂背景未验；需占机（用户给时点）
   - 进展（2026-11-25 夜，proot ROI 级）：真机 2412×1080 截图，单 ROI 200×70 → 干净标签 0.73–0.79（`纳物库`/`阴阳寨` 精确），非文字区 ≤0.22 可用阈值过滤；整行 strip 必乱码。证据 `docs/evidence/20261125-2316-BG-43-real-onmyoji-screenshot-rec-roi.md`。**待办：APK 内复测**
