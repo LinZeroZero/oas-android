@@ -68,6 +68,8 @@ Apache-2.0 要求：保留版权与许可声明、标明修改。本文件承担
 | AndroidX / Material Components | Apache-2.0 |
 | Kotlin / kotlinx | Apache-2.0 |
 
+许可证全文副本：`docs/licenses/Apache-2.0.txt`、`docs/licenses/MIT.txt`（本仓分发的第三方组件适用）。
+
 版本单一来源：`gradle/libs.versions.toml`（AGP 8.13.2 / Kotlin 2.3.10 / Compose BOM 2026.01.01 / Chaquopy 17.2.0 / OpenCV 4.13.0）与
 `app/build.gradle`（Python 3.13、`numpy==1.26.2`、`pillow`）；本表与那两个文件不一致时，以文件为准。
 
