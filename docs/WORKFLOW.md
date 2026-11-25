@@ -80,6 +80,7 @@
   - `chore(build): server.jar 重编`
 - 提交信息末尾带一行实测/构建信息，例如：
   `build: OK / APK md5 fa604011… / 48,891,504 B`
+- **CI 比本地 `gate.sh` 多一条提交规范检查**（Conventional Commits）：`Merge*` / `Revert*` 前缀豁免，且**大小写敏感**——手工写的 merge 提交标题必须用大写 `Merge` 开头（写 `merge main …` 会让 `static-gate` FAIL，而本地 12 项全 PASS）。
 
 ## 4. 两层门禁（合并门禁 ≠ 发布门禁）
 
@@ -117,6 +118,7 @@
 
 **结论**：1–8 全 ✅ = PASS；任一 ⚠ = CHANGES（须给「哪个文件、改成什么」）
 **通过才**：主 AI 签发 → squash 合并（`merge_method=squash`）→ 打 tag
+**draft → 正式**：REST `PATCH /pulls/<n>` 传 `{"draft": false}` 会**返回 200 但静默不生效**；必须用 GraphQL `markPullRequestReadyForReview(input:{pullRequestId:<node_id>})`。
 **不通过**：只给意见，不动分支
 
 ## 6. 证据留痕

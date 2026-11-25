@@ -3,13 +3,13 @@
 > **任何 AI 会话开工第一件事：读本文件 + `PROGRESS.md` + `DECISIONS.md`。**
 > **上限：本文件 ≤50 行且 ≤5 KB · `PROGRESS.md` ≤40 行且 ≤4 KB · `DECISIONS.md` 每条 1 行且 ≤300 B。超了就删，不是缩。**
 > 只留**结论**，原因下沉 `docs/`；历史交 `git log`；**过时规则立即删**（过时比没有更糟）；新增一条就删一条，总长不变。
-> 例外：**不可逆损失**类（boot/vbmeta、装包路径、权限、jar 字节）不受行数限制。详细流程 `docs/WORKFLOW.md`，全量待办 `docs/BACKLOG.md`，历史 `docs/HANDOFF.md`，**交接包模板 `docs/handoff/README.md`**。
+> 例外：**不可逆损失**类（boot/vbmeta、装包路径、权限、jar 字节）不受行数限制。详流程 `docs/WORKFLOW.md`、待办 `docs/BACKLOG.md`、历史 `docs/HANDOFF.md`、交接包 `docs/handoff/`。
 
 ## 1. 角色边界（谁都不能越位）
 - **执行位 = 主 AI**：仓库所有文件、`git commit/push`、开 PR、合并，全由主 AI 做；写完不自评。
 - **审查位 = 唯一子会话（`OAS-D2`，`0ef69b6e…`）**：只读命令、结论、`/tmp/outbox/*.md`；不得写仓库、`git add/commit/switch`、动设备。
-- **必审（改产物/门禁/规矩）**：`app/` `poc/` `tools/` `vendor/` `patches/` `.github/` `.githooks/` `gradle*` `*.gradle.kts` `setup_android_env.sh` `dist/` 及任何构建产物；`AGENTS.md` `docs/WORKFLOW.md` `DECISIONS.md`。
-- **抽审（只描述状态/历史/证据）**：`PROGRESS.md` `docs/BACKLOG.md` `README.md` `CHANGELOG.md` `THIRD_PARTY_NOTICES.md` `.gitignore` `LICENSE` `docs/HANDOFF.md` `docs/handoff/*` `docs/evidence/*` `docs/research/*` `docs/reviews/*` `docs/adr/*`；不阻塞合并，但须 gate 机器判据（BG-38）+ 每 5 单全查一次。
+- **必审（改产物/门禁/规矩）**：`app/` `poc/` `tools/` `vendor/` `patches/` `.github/` `.githooks/` `dist/`、`gradle*` `*.gradle.kts` `setup_android_env.sh` 及任何构建产物；`AGENTS.md` `docs/WORKFLOW.md` `DECISIONS.md`。
+- **抽审（只描述状态/历史/证据）**：`PROGRESS.md` `docs/BACKLOG.md` `README.md` `CHANGELOG.md` `THIRD_PARTY_NOTICES.md` `.gitignore` `LICENSE` `docs/(HANDOFF.md|handoff/*|evidence/*|research/*|reviews/*|adr/*)`；不阻塞合并，但须 gate 机器判据（BG-38）+ 每 5 单全查一次。
 - **顺序（C 模式）：改完 → 开 draft PR → CI + 审查位审 → PASS → 转正式 → 用户签发 → 合**；未 PASS 不得转正式、不得合入 main；主 AI 不得自批。
 - **并发 ≤2**：主 AI + 1 个审查位（按当场 `free`/`loadavg` 复核）。
 
@@ -43,4 +43,4 @@
 ## 5. 真机实验收工定序（缺一不算完）
 
 **先确认真响铃 → 再亮屏 → 再把 Operit 拉回前台**；销毁所有 `oas-*` 虚拟屏、停 daemon 与游戏、`accelerometer_rotation` 复位 0、清 `/data/local/tmp` 本轮临时文件。
-- 收工还要：杀自起后台进程（`logcat -s … &` 等）；清 `/sdcard/oas_*`（自查 `ls /sdcard/oas_*` 应空）
+- 收工还要：杀自起后台进程（`logcat -s … &` 等，自查 `pgrep -f 'logcat -s'` 应空）；清 `/sdcard/oas_*`（自查 `ls /sdcard/oas_*` 应空）
