@@ -50,6 +50,9 @@
   - 证据：`docs/handoff/` 现只剩 `20261125-0852-main-ai.md` + README；README 已改两类；`HANDOFF.md §十二` 指针已同步；旧 4 包已 `git rm`
   - 归属：主 AI；抽审（记录类，不阻塞）
 
+- [ ] **BG-45 CI 提交规范差异**：CI 比本地 `gate.sh` 多一条 Conventional Commits 检查（`Merge*|Revert*` 豁免、大小写敏感）；merge 提交标题须以大写 `Merge` 开头；建议落 `docs/WORKFLOW.md` 提交纪律节
+- [ ] **BG-46 draft PR 转正通道**：REST `PATCH draft:false` 返回 200 但静默不生效；须 GraphQL `markPullRequestReadyForReview`（用 `node_id`）；建议落 `WORKFLOW §5`
+- [ ] **BG-47 AGENTS 余量告急**：46 行 / 5,057 B（上限 50 / 5,120，仅余 63 B）；任何新增前必须先删一条（D-015）；顺带给「杀自起后台进程」补自查命令
 ## 三、设备侧隐患（P2）
 
 - [ ] **BG-06 `screen_off_timeout=1800000`（30 分钟）疑似被改坏未还原**
@@ -198,8 +201,12 @@
 
 ## 八、L2 引擎接入（P0）
 
-- [ ] **BG-40 OAS OCR 在 APK 内跑通（ppocronnx shim + onnxruntime AAR）**
-  - 现状：proot 已用 `onnxruntime 1.20.0` CPU 版跑通 rec（4/4 合成样本正确，中位 **66–68 ms**，证据 `docs/evidence/20261125-0732-OCR-rec-proot-baseline.md`）；**APK 内仍不可用**（Chaquopy 无 onnxruntime 轮子）
+- [x] **BG-40 OAS OCR 在 APK 内跑通（ppocronnx shim + onnxruntime AAR）**
+  - 现状：**已完成（rec）**——真机 APK 内首跑 `ok`，`text=123 score=0.9958`、174.4 ms（n=1，D-018 不作结论）；证据 `docs/evidence/20261125-0832-BG-40-OCR-in-APK-first-run.md`（已入库）；⚠ det 未做（Full/Quantity → BG-41）、NNAPI 未测
   - 动作：① 写 `ppocronnx` shim（`app/src/main/python/ppocronnx/`，接口与上游一致，OAS 代码零改动）；② Kotlin `OcrRuntime.kt`（`OrtSession` 封装，支持 CPU / NNAPI 切换）；③ 模型 `ch_PP-OCRv2_rec_infer.onnx`（8,361,244 B）+ 字典（6,623 字）入 `assets/`；④ `THIRD_PARTY_NOTICES` 加 ppocr-onnx（Apache-2.0）
   - 验收：`BaseCor.ocr_single_line()` 在 APK 内对一张 ROI 返回非空文本且不抛异常；证据落 `docs/evidence/`
   - 归属：主 AI；必审（改 app/）
+- [ ] **BG-41 OCR det：让 Full/Quantity（~58 对象）可用**：两条替代路——纯 numpy unclip / 矩形框近似；验收：`detect_and_ocr` 整屏返回非空且不抛 `NotImplementedError`；归属：主 AI，必审（改 app/）
+- [ ] **BG-42 OCR 提速定标（n≥5 取中位数，D-018）**：`FloatBuffer`/直接内存替代 numpy→Java `FloatArray` 逐元素转换（第一优先）；另测 release 构建、预热；真机 174.4 vs proot 66–68 ms
+- [ ] **BG-43 真实阴阳师截图复验 OCR**：现只验过 PIL 合成数字图，中文/描边/复杂背景未验；需占机（用户给时点）
+- [ ] **BG-44 `SelfCheck` OCR probe 加开关**：每次自检 +~350 ms、首次含 8.3MB 模型拷贝；非阻断
