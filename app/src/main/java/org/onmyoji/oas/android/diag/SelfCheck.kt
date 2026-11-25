@@ -45,6 +45,12 @@ object SelfCheck {
             } catch (t: Throwable) {
                 android.util.Log.e("OAS_SMOKE", "smoke_base failed: ${t.message}", t)
             }
+            // BG-40 OCR 烟测：ppocronnx shim -> OcrRuntime(AAR) -> ONNX
+            try {
+                android.util.Log.i("OAS_OCR", PyRuntime.call("ocr_probe"))
+            } catch (t: Throwable) {
+                android.util.Log.e("OAS_OCR", "ocr_probe failed: ${t.message}", t)
+            }
             CheckItem("Python 运行时", CheckState.OK, hello)
         }.also(onItem)
     }
