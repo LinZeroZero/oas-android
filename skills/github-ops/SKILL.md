@@ -49,7 +49,7 @@ mutation($id: ID!){ markPullRequestReadyForReview(input:{pullRequestId:$id}){ pu
 ## 约束
 - 派单文本（给审查位的）由主 AI 拟、**用户转发**；内容只含「目的 + 范围 + 对象 sha + 锚点 sha」，禁自列判据/检索词（D-023/D-030）。
 - 任何写操作（合并/转正式/删分支）前，先在回复里把**将要执行的命令**摆出来。
-- 不用 `gh` CLI（本机没有）；一律 Python + `urllib` 调 REST/GraphQL，token 从 `/root/.git-credentials` 读，**不回显 token**。
+- **优先用 Operit 的 `github` 包工具**（PR / check-runs / 合并 / 删分支）；包不可用或需 GraphQL 时，用 Python + `urllib`，token 从 `/root/.git-credentials` 读，**不回显 token**；不用 `gh` CLI（本机没有）。
 
 ## 期望输出
 - 一段「状态表」：PR 号 / head sha / `mergeable_state` / CI 结论 / 分支是否已删
