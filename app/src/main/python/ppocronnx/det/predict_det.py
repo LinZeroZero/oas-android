@@ -125,7 +125,7 @@ class TextDetector(object):
         if timing is not None:
             timing["pre"] = (time.perf_counter() - _t0) * 1000.0
             _t1 = time.perf_counter()
-        flat_list = flat.tolist()                      # 跨语言编组（BG-42 怀疑点）
+        flat_list = flat.tolist()                      # 纯 Python list；跨语言编组发生在下一行 runDet 内
         if timing is not None:
             timing["marshal"] = (time.perf_counter() - _t1) * 1000.0
             _t2 = time.perf_counter()
