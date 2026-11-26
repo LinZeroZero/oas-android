@@ -88,6 +88,19 @@ class TextDetector(object):
         self.unclip_ratio = unclip_ratio
         self.max_boxes = max_boxes
 
+    @property
+    def box_thresh(self):
+        """上游契约：`model.text_detector.box_thresh`。
+
+        上游语义是「DB 输出二值化框阈值」，与本仓 `bin_thr` 等价；
+        提供 property 而不是新字段，避免两份阈值漂移（上游读写都会落到 `bin_thr`）。
+        """
+        return self.bin_thr
+
+    @box_thresh.setter
+    def box_thresh(self, value):
+        self.bin_thr = float(value)
+
     def __call__(self, img: np.ndarray) -> List[Tuple[int, int, int, int]]:
         if img is None or img.size == 0:
             return []

@@ -72,6 +72,11 @@ class TextSystem(object):
         # det：BG-41 起提供实例。上游（SixRealms/oas_ocr.py）会直接读写
         # model.text_detector.box_thresh，所以这里必须是真对象而不是 None。
         self.text_detector = TextDetector()
+        # 构造参数也要真正生效（否则 TextSystem(box_thresh=0.2) 只存不用）
+        if box_thresh is not None:
+            self.text_detector.bin_thr = float(box_thresh)
+        if unclip_ratio is not None:
+            self.text_detector.unclip_ratio = max(1.0, min(2.0, float(unclip_ratio)))
         self.text_classifier = None
         self.text_recognizer = TextRecognizer(
             rec_model_path=rec_model_path, ort_providers=ort_providers
