@@ -153,7 +153,7 @@ class TextSystem(object):
         if box_thresh is not None:
             det.bin_thr = float(box_thresh)
         try:
-            from ..rec.predict_rec import _runtime
+            from ppocronnx.rec.predict_rec import _runtime
             rt = _runtime()
             if hasattr(rt, "isDetReady") and not bool(rt.isDetReady()):
                 reason = str(rt.detLastError()) if hasattr(rt, "detLastError") else "未知"
