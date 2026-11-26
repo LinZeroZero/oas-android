@@ -104,10 +104,11 @@ Apache-2.0 要求：保留版权与许可声明、标明修改。本文件承担
 ### 4.4 ppocr-onnx 0.0.3.9 — Apache License 2.0（接口与算法参考，本仓重新实现）
 
 - 上游：https://github.com/triwinds/ppocr-onnx （Apache-2.0）
-- 模型来源：PaddleOCR PP-OCRv2 识别模型 `ch_PP-OCRv2_rec_infer.onnx` + 字典 `ppocr_keys_v1.txt`（Apache-2.0）
+- 模型来源：PaddleOCR PP-OCRv2 识别模型 `ch_PP-OCRv2_rec_infer.onnx` + 字典 `ppocr_keys_v1.txt`（Apache-2.0）；检测模型 `ch_PP-OCRv3_det_infer.onnx`（2,432,880 B，PP-OCRv3 det，Apache-2.0，BG-41 接入）
 - **本仓未安装该 Python 包**（其硬依赖 `onnxruntime`/`pyclipper` 在 cp313 无轮子），而是写了同名 shim：
   - `app/src/main/python/ppocronnx/predict_system.py` —— `TextSystem` / `BoxedResult` 接口
   - `app/src/main/python/ppocronnx/rec/predict_rec.py` —— 预处理参数与上游一致（`[3,32,320]`、归一化到 [-1,1]）
+  - `app/src/main/python/ppocronnx/det/predict_det.py` —— det 预处理 + **纯 numpy DB 后处理**（矩形近似 unclip，替代 pyclipper/shapely）
   - `app/src/main/python/ppocronnx/rec/rec_decoder.py` —— CTC 贪心解码（语义对齐上游 `CTCLabelDecode`）
-- 与上游的差异：推理改走 Kotlin `OcrRuntime`；`detect_and_ocr`（det）**未实现**，调用会抛 `NotImplementedError`
+- 与上游的差异：推理改走 Kotlin `OcrRuntime`；`detect_and_ocr`（det）**已实现**（BG-41：PP-OCRv3 det + 纯 numpy DB 后处理，矩形近似 unclip）；det 未就绪时抛带原因的异常，不静默返回空
 - 模型与字典随 APK 分发于 `app/src/main/assets/ocr/`

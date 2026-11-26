@@ -24,6 +24,7 @@ from typing import Iterable, List, Optional
 import numpy as np
 
 from .rec.predict_rec import TextRecognizer
+from .det.predict_det import TextDetector
 
 __all__ = ["TextSystem", "BoxedResult"]
 
@@ -68,8 +69,14 @@ class TextSystem(object):
         self.use_angle_cls = use_angle_cls
         self.box_thresh = box_thresh
         self.unclip_ratio = unclip_ratio
-        # det 第一版不提供；保留字段以便将来接入
-        self.text_detector = None
+        # det：BG-41 起提供实例。上游（SixRealms/oas_ocr.py）会直接读写
+        # model.text_detector.box_thresh，所以这里必须是真对象而不是 None。
+        self.text_detector = TextDetector()
+        # 构造参数也要真正生效（否则 TextSystem(box_thresh=0.2) 只存不用）
+        if box_thresh is not None:
+            self.text_detector.bin_thr = float(box_thresh)
+        if unclip_ratio is not None:
+            self.text_detector.unclip_ratio = max(1.0, min(2.0, float(unclip_ratio)))
         self.text_classifier = None
         self.text_recognizer = TextRecognizer(
             rec_model_path=rec_model_path, ort_providers=ort_providers
@@ -100,13 +107,57 @@ class TextSystem(object):
         return rec_res
 
     def detect_and_ocr(self, img: np.ndarray, drop_score=0.5, unclip_ratio=None, box_thresh=None):
-        """全图检测 + 识别。本仓第一版未实现（缺 det + pyclipper/shapely）。
+        """全图检测 + 识别（BG-41 第一版：det + 矩形近似 unclip + rec）。
 
-        抛 NotImplementedError 而不是返回空列表 —— 静默返回 [] 会让上游把
+        unclip_ratio / box_thresh 可覆盖默认值（对齐上游签名）。
+        检测不可用时**抛异常而不是返回空列表** —— 静默返回 [] 会让上游把
         「检测失败」误当成「画面没字」，进而做出错误决策。
         """
-        raise NotImplementedError(
-            "detect_and_ocr 尚未实现（BG-40 第一版只做单行 rec）。"
-            "det 需要 pyclipper/shapely，Chaquopy cp313 无轮子；"
-            "若要支持全图检测，需先解决这两个原生依赖。"
-        )
+        if img is None or getattr(img, "size", 0) == 0:
+            return []
+        detector = self._detector(unclip_ratio, box_thresh)
+        boxes = detector(img)
+        if not boxes:
+            return []
+
+        crops, metas = [], []
+        for (x0, y0, x1, y1) in boxes:
+            crop = img[y0:y1, x0:x1]
+            if getattr(crop, "size", 0) == 0:
+                continue
+            crops.append(crop)
+            # 与上游一致：box 用 4 个角点（左上→右上→右下→左下）表示
+            metas.append(np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], dtype=np.int32))
+        if not crops:
+            return []
+
+        rec_res, _elapse = self.text_recognizer(crops)
+        results = []
+        for (text, score), box in zip(rec_res, metas):
+            if score is None or float(score) < drop_score:
+                continue
+            results.append(BoxedResult(box, None, text, float(score)))
+        return results
+
+    def _detector(self, unclip_ratio=None, box_thresh=None):
+        """复用 `self.text_detector`（上游会直接读写它的属性）；未就绪时抛带原因的异常。"""
+        det = self.text_detector
+        if det is None:
+            det = TextDetector()
+            self.text_detector = det
+        if unclip_ratio is not None:
+            # 上游语义是「膨胀距离 ≈ 面积/周长 ×ratio」；本仓是矩形放大倍数，
+            # 两者不可直接换算（早期写成 1+ratio 会把 1.6 变成 2.6 倍框），
+            # 这里按倍数理解并夹到 [1.0, 2.0]。
+            det.unclip_ratio = max(1.0, min(2.0, float(unclip_ratio)))
+        if box_thresh is not None:
+            det.bin_thr = float(box_thresh)
+        try:
+            from ..rec.predict_rec import _runtime
+            rt = _runtime()
+            if hasattr(rt, "isDetReady") and not bool(rt.isDetReady()):
+                reason = str(rt.detLastError()) if hasattr(rt, "detLastError") else "未知"
+                raise NotImplementedError("det 未就绪（%s）" % reason)
+        except ImportError:
+            pass
+        return det

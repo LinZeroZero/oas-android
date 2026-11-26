@@ -23,12 +23,21 @@ object OcrRuntime {
     /** 模型与字典都在 assets/ocr/ 下 */
     private const val ASSET_DIR = "ocr"
     private const val MODEL_ASSET = "$ASSET_DIR/ch_PP-OCRv2_rec_infer.onnx"
+    // 全图检测（BG-41）：PP-OCRv3 det，2,432,880 B，动态输入 [None,3,'?','?']
+    private const val DET_ASSET = "$ASSET_DIR/ch_PP-OCRv3_det_infer.onnx"
 
     @Volatile
     private var env: OrtEnvironment? = null
 
     @Volatile
     private var session: OrtSession? = null
+
+    /** det（全图检测）会话：可选能力，未就绪时 [runDet] 抛异常、rec 不受影响 */
+    @Volatile
+    private var detSession: OrtSession? = null
+    private var detInputName: String = "x"
+    @Volatile
+    private var detLastError: String = ""
 
     @Volatile
     private var inputName: String = "x"
@@ -76,6 +85,17 @@ object OcrRuntime {
             env = e
             session = s
             inputName = s.inputNames.firstOrNull() ?: "x"
+            // det（全图检测）独立初始化：失败不影响 rec，只让 runDet 抛错
+            try {
+                val detFile = copyAssetOnce(context, DET_ASSET)
+                val ds = e.createSession(detFile.absolutePath, opts)
+                detSession = ds
+                detInputName = ds.inputNames.firstOrNull() ?: "x"
+                detLastError = ""
+            } catch (t: Throwable) {
+                detSession = null
+                detLastError = "det init failed: ${t.javaClass.simpleName}: ${t.message}"
+            }
             true
         } catch (t: Throwable) {
             lastError = "init failed: ${t.javaClass.simpleName}: ${t.message}"
@@ -113,6 +133,41 @@ object OcrRuntime {
                     }
                     res[t] = best.toFloat()
                     res[tSteps + t] = bestV
+                }
+                return res
+            }
+        }
+    }
+
+    /** det 是否就绪（rec 可用但 det 不可用时，detect_and_ocr 会抛带原因的异常） */
+    @JvmStatic
+    fun isDetReady(): Boolean = detSession != null
+
+    @JvmStatic
+    fun detLastError(): String = detLastError
+
+    /**
+     * 跑一次全图检测（DB），返回概率图展平数组。
+     *
+     * @param input NCHW 展平的 float 数组，长度必须 = c*h*w
+     * @return 长度 h*w 的概率图（[0,1]），行优先展开
+     */
+    @JvmStatic
+    fun runDet(input: FloatArray, c: Int, h: Int, w: Int): FloatArray {
+        val e = env ?: throw IllegalStateException("OcrRuntime.init 未调用")
+        val s = detSession ?: throw IllegalStateException("det session 未就绪: $detLastError")
+        require(input.size == c * h * w) { "输入长度 ${input.size} != $c*$h*$w" }
+
+        val shape = longArrayOf(1L, c.toLong(), h.toLong(), w.toLong())
+        OnnxTensor.createTensor(e, FloatBuffer.wrap(input), shape).use { tensor ->
+            s.run(mapOf(detInputName to tensor)).use { result ->
+                // 输出 [1][1][H][W]
+                @Suppress("UNCHECKED_CAST")
+                val out = result.get(0).value as Array<Array<Array<FloatArray>>>
+                val res = FloatArray(h * w)
+                for (y in 0 until h) {
+                    val row = out[0][0][y]
+                    System.arraycopy(row, 0, res, y * w, minOf(w, row.size))
                 }
                 return res
             }
