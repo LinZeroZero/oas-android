@@ -2,7 +2,7 @@
 
 ## 1. 日期 / 分支 / commit
 - 2026-11-26 15:12（CST）；分支 `feat/bg41-det-probe`（基于 main `2a15316`）
-- APK **69,690,996 B**（`app/build/outputs/apk/debug/app-debug.apk`）
+- APK **69,690,996 B**，md5 `23fceee0c51d83326be80ce9d6928f5f`（`app/build/outputs/apk/debug/app-debug.apk`）
 
 ## 2. 环境与做法
 - 真机 `org.onmyoji.oas.android/.MainActivity` 启动 → 应用自检调用 `PyRuntime.call("det_probe")`
@@ -25,6 +25,8 @@
 
 ## 4. 结论
 - **`detect_and_ocr` 在 APK 内可用**：不再抛 `NotImplementedError`，全图 → 检测 → 逐框识别 → `BoxedResult` 全链路跑通。
+- **限定（重要）**：`build.gradle` 仍 `exclude 'module/ocr/**'` —— 实测 `app.imy` 内 `module/ocr/` **0 个文件**、`ppocronnx/` 13 个。
+  所以本条只保证 **shim 层 det 链路可用**；`Full`/`Quantity` 那 58 个对象的**模块级实现**要等 `module/ocr/**` 解禁才进包。
 - **`Full` / `Quantity`（~58 对象）的分发不再必然失败**（`RuleOcr` 的 det 分支有了实现）。
 - **首跑 4.1 s 不可当性能结论**（D-018）：单次、含模型拷贝与冷启；后续应按 n≥5 中位数定标（BG-42）。
 
