@@ -5,7 +5,7 @@
 ## 当前
 - `main` = 最新合并提交（要具体 sha 就 `git log --oneline -1`；本文件不记，见 D-013）；本地与远端都只剩 `main`；`git status` 干净
 - **流程 C 模式（D-029）**：改 → 开 draft PR → CI + 审查位 PASS → 转正式 → 用户签发 → squash 合并
-- **角色（D-026/027）**：主 AI = 唯一执行位（全仓写 + commit/push + 开 PR + 合并）；`OAS-D2` = 只读审查位；用户 = 签发；必审/抽审清单见 `AGENTS.md §1`
+- **角色（D-026/027）**：主 AI = 唯一执行位（全仓写 + PR/合并）；审查方 = 用户指定的唯一评审对话；用户 = 签发；必审/抽审清单见 `AGENTS.md §1`
 - `server.jar` = **29,253 B**（未重打，md5 `a7830c84…`）
 - 最近合并：**现查 `git log --oneline -3`**（本文件不写 PR 号/sha，见 D-013、D-017）
 - 可分发 APK：`app/build/outputs/apk/debug/app-debug.apk`（字节以 `ls -l` 为准）；`dist/` 两个包是旧的，未更新
