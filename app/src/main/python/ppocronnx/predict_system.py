@@ -106,7 +106,7 @@ class TextSystem(object):
         rec_res, _elapse = self.text_recognizer(tmp_img_list)
         return rec_res
 
-    def detect_and_ocr(self, img: np.ndarray, drop_score=0.5, unclip_ratio=None, box_thresh=None):
+    def detect_and_ocr(self, img: np.ndarray, drop_score=0.5, unclip_ratio=None, box_thresh=None, timing=None):
         """全图检测 + 识别（BG-41 第一版：det + 矩形近似 unclip + rec）。
 
         unclip_ratio / box_thresh 可覆盖默认值（对齐上游签名）。
@@ -116,7 +116,7 @@ class TextSystem(object):
         if img is None or getattr(img, "size", 0) == 0:
             return []
         detector = self._detector(unclip_ratio, box_thresh)
-        boxes = detector(img)
+        boxes = detector(img, timing=timing)
         if not boxes:
             return []
 
@@ -131,7 +131,11 @@ class TextSystem(object):
         if not crops:
             return []
 
+        import time as _t
+        _tr = _t.perf_counter()
         rec_res, _elapse = self.text_recognizer(crops)
+        if timing is not None:
+            timing["rec"] = (_t.perf_counter() - _tr) * 1000.0
         results = []
         for (text, score), box in zip(rec_res, metas):
             if score is None or float(score) < drop_score:
