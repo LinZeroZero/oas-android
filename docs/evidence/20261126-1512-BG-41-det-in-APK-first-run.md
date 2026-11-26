@@ -24,10 +24,8 @@
 | rec 侧回归 | `{"ok": true, "text": "123", "score": 0.9958, run 131.4ms}` —— **未受影响** |
 
 ## 4. 结论
-- **`detect_and_ocr` 在 APK 内可用**：不再抛 `NotImplementedError`，全图 → 检测 → 逐框识别 → `BoxedResult` 全链路跑通。
-- **限定（重要）**：`build.gradle` 仍 `exclude 'module/ocr/**'` —— 实测 `app.imy` 内 `module/ocr/` **0 个文件**、`ppocronnx/` 13 个。
-  所以本条只保证 **shim 层 det 链路可用**；`Full`/`Quantity` 那 58 个对象的**模块级实现**要等 `module/ocr/**` 解禁才进包。
-- **`Full` / `Quantity`（~58 对象）的分发不再必然失败**（`RuleOcr` 的 det 分支有了实现）。
+- **`detect_and_ocr` 在 APK 内可用**：不再抛 `NotImplementedError`，全图 → 检测 → 逐框识别 → `BoxedResult` 全链路跑通；`RuleOcr` 的 det 分支因此有了实现（`Full`/`Quantity` 的分发不再必然失败）。
+- **限定（重要）**：`build.gradle` 仍 `exclude 'module/ocr/**'` —— 实测 `app.imy` 内 `module/ocr/` **0 个文件**、`ppocronnx/` 13 个；故本条只保证 **shim 层 det 链路**，那 58 个对象的**模块级实现**要等解禁才进包。
 - **首跑 4.1 s 不可当性能结论**（D-018）：单次、含模型拷贝与冷启；后续应按 n≥5 中位数定标（BG-42）。
 
 ## 5. 真机暴露的 bug（proot 侧测不到）

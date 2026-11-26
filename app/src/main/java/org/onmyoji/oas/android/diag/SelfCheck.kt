@@ -48,10 +48,14 @@ object SelfCheck {
             // BG-40 OCR 烟测：ppocronnx shim -> OcrRuntime(AAR) -> ONNX
             try {
                 android.util.Log.i("OAS_OCR", PyRuntime.call("ocr_probe"))
-                // BG-41：全图检测（det）烟测
-                android.util.Log.i("OAS_DET", PyRuntime.call("det_probe"))
             } catch (t: Throwable) {
                 android.util.Log.e("OAS_OCR", "ocr_probe failed: ${t.message}", t)
+            }
+            // BG-41：全图检测（det）烟测（独立 try，避免 det 失败被记成 ocr_probe failed）
+            try {
+                android.util.Log.i("OAS_DET", PyRuntime.call("det_probe"))
+            } catch (t: Throwable) {
+                android.util.Log.e("OAS_DET", "det_probe failed: ${t.message}", t)
             }
             CheckItem("Python 运行时", CheckState.OK, hello)
         }.also(onItem)
