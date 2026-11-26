@@ -906,8 +906,9 @@ def det_probe() -> str:
         arr = np.asarray(img)[:, :, ::-1].copy()  # 上游按 BGR
 
         ts = TextSystem()
+        timing = {}
         t0 = time.time()
-        res = ts.detect_and_ocr(arr, drop_score=0.3)
+        res = ts.detect_and_ocr(arr, drop_score=0.3, timing=timing)
         ms = (time.time() - t0) * 1000.0
         items = []
         for r in res[:6]:
@@ -915,8 +916,11 @@ def det_probe() -> str:
                 "text": getattr(r, "ocr_text", None) or str(r),
                 "score": round(float(getattr(r, "score", 0.0) or 0.0), 4),
             })
-        return json.dumps({"ok": True, "n": len(res), "ms": round(ms, 1), "items": items},
-                          ensure_ascii=False)
+        for k in ("pre", "marshal", "run", "post", "rec"):
+            if k in timing:
+                timing[k] = round(float(timing[k]), 1)
+        return json.dumps({"ok": True, "n": len(res), "ms": round(ms, 1),
+                           "seg": timing, "items": items}, ensure_ascii=False)
     except Exception as exc:  # noqa: BLE001 —— 探针本身绝不许把自检搞崩
         return json.dumps({"ok": False, "err": "%s: %s" % (type(exc).__name__, exc)},
                           ensure_ascii=False)

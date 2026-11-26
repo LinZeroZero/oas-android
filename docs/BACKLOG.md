@@ -217,6 +217,7 @@
   - 进展（2026-11-25 spike，证据 `docs/evidence/20261125-2325-BG-41-det-spike-numpy-db.md`）：**可行性成立**——无 cv2/pyclipper/scipy，纯 numpy（4x 降采样 BFS 连通域 + 矩形外扩 15% 近似 unclip）跑通 det→裁剪→rec；真实中文界面 0.88–1.00；det 382ms + 25 框 rec 981ms ≈ 1.4s/整屏（n=1，D-018 不作结论）。建议第一版用矩形近似 + `max_boxes=20`、`thr=0.3`；多边形 unclip 后置。
 - [ ] **BG-42 OCR 提速定标（n≥5 取中位数，D-018）**：`FloatBuffer`/直接内存替代 numpy→Java `FloatArray` 逐元素转换（第一优先）；另测 release 构建、预热；真机 174.4 vs proot 66–68 ms
   - 定标已做（2026-11-26 16:22，n=5 全冷启，证据 `docs/evidence/20261126-1622-BG-42-ocr-det-n5-timing.md`）：rec **132.3ms**（131.0–137.7，极稳）；det 端到端 **4104.2ms**（4047–4656）——**不是首跑开销**，而是每次调用常态。结论：**BG-42 升为 A（解禁 module/ocr/**）的前置条件**；下一步先给 det_probe 加分段计时分离 marshal / runDet / 后处理。
+  - 分段计时（2026-11-26 16:33，n=3，证据 `docs/evidence/20261126-1633-BG-42-det-segment-timing.md`）：**pre 7.3 / marshal 18.0 / run 4015.3 / post 302.7 / rec 228.6 ms** —— marshal 只占 0.4%，**真凶是 ORT 推理（`runDet` ~91%）**，原定「FloatBuffer 第一优先」被证伪。下一步：试 `intra_op_num_threads=4/0`、NNAPI、降 `limit_side`、post 向量化。
 - [ ] **BG-43 真实阴阳师截图复验 OCR**：现只验过 PIL 合成数字图，中文/描边/复杂背景未验；需占机（用户给时点）
   - 进展（2026-11-25 夜，proot ROI 级）：真机 2412×1080 截图，单 ROI 200×70 → 干净标签 0.73–0.79（`纳物库`/`阴阳寨` 精确），非文字区 ≤0.22 可用阈值过滤；整行 strip 必乱码。证据 `docs/evidence/20261125-2316-BG-43-real-onmyoji-screenshot-rec-roi.md`。**待办：APK 内复测**
 - [ ] **BG-44 `SelfCheck` OCR probe 加开关**：每次自检 +~350 ms、首次含 8.3MB 模型拷贝；非阻断

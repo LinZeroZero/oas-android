@@ -8,6 +8,7 @@
 同一行并排的多段文字可能被并进同一框；多列布局可能串行。第一版接受该失真，
 后续再用多边形 unclip（Vatti 裁剪）替换。
 """
+import time
 from typing import List, Tuple
 
 import numpy as np
@@ -101,7 +102,8 @@ class TextDetector(object):
     def box_thresh(self, value):
         self.bin_thr = float(value)
 
-    def __call__(self, img: np.ndarray) -> List[Tuple[int, int, int, int]]:
+    def __call__(self, img: np.ndarray, timing=None) -> List[Tuple[int, int, int, int]]:
+        """timing 为可选 dict；传入时按段回填 ms（pre/marshal/run/post），仅用于定标。"""
         if img is None or img.size == 0:
             return []
         H, W = img.shape[0], img.shape[1]
@@ -110,6 +112,8 @@ class TextDetector(object):
         nw = max(32, int(round(W * scale / 32)) * 32)
         scale = min(nh / float(H), nw / float(W))
 
+        if timing is not None:
+            _t0 = time.perf_counter()
         from PIL import Image
         small = np.asarray(
             Image.fromarray(np.ascontiguousarray(img[:, :, :3].astype(np.uint8))).resize((nw, nh), Image.BILINEAR),
@@ -118,7 +122,17 @@ class TextDetector(object):
         x = ((small - MEAN) / STD).transpose(2, 0, 1)[np.newaxis, ...]
         flat = np.ascontiguousarray(x, dtype=np.float32).reshape(-1)
 
-        raw = _runtime().runDet(flat.tolist(), 3, nh, nw)   # Kotlin: FloatArray, c, h, w
+        if timing is not None:
+            timing["pre"] = (time.perf_counter() - _t0) * 1000.0
+            _t1 = time.perf_counter()
+        flat_list = flat.tolist()                      # 跨语言编组（BG-42 怀疑点）
+        if timing is not None:
+            timing["marshal"] = (time.perf_counter() - _t1) * 1000.0
+            _t2 = time.perf_counter()
+        raw = _runtime().runDet(flat_list, 3, nh, nw)    # Kotlin: FloatArray, c, h, w
+        if timing is not None:
+            timing["run"] = (time.perf_counter() - _t2) * 1000.0
+            _t3 = time.perf_counter()
         prob = np.asarray(list(raw), dtype=np.float32).reshape(nh, nw)
 
         mask = prob > self.bin_thr
@@ -143,4 +157,8 @@ class TextDetector(object):
             if x1 - x0 < 8 or y1 - y0 < 8:
                 continue
             out.append((x0, y0, x1, y1))
+        if timing is not None:
+            timing["post"] = (time.perf_counter() - _t3) * 1000.0
+            timing["det_in"] = "%dx%d" % (nw, nh)
+            timing["boxes"] = len(out)
         return out
