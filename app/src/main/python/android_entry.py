@@ -880,6 +880,45 @@ def _finish_selftest(cache, checks, info, perf, fatal):
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
+def det_probe() -> str:
+    """BG-41 det 烟测：合成图 -> TextSystem.detect_and_ocr（det + 矩形近似 unclip + rec）。
+
+    用 PIL 默认字体画两行 ASCII（不依赖中文字体），验证：
+    ① det 会话在 APK 内能跑；② detect_and_ocr 不再抛 NotImplementedError；
+    ③ 检测框数量与识别文本合理。返回 JSON 字符串供 logcat 采集。
+    """
+    try:
+        import json
+        import time
+
+        import numpy as np
+        from PIL import Image, ImageDraw, ImageFont
+        from ppocronnx.predict_system import TextSystem
+
+        font = ImageFont.load_default(size=40)
+        img = Image.new("RGB", (600, 240), (255, 255, 255))
+        draw = ImageDraw.Draw(img)
+        draw.text((20, 20), "HELLO 123", fill=(0, 0, 0), font=font)
+        draw.text((20, 120), "OAS OCR TEST", fill=(0, 0, 0), font=font)
+        arr = np.asarray(img)[:, :, ::-1].copy()  # 上游按 BGR
+
+        ts = TextSystem()
+        t0 = time.time()
+        res = ts.detect_and_ocr(arr, drop_score=0.3)
+        ms = (time.time() - t0) * 1000.0
+        items = []
+        for r in res[:6]:
+            items.append({
+                "text": getattr(r, "ocr_text", None) or str(r),
+                "score": round(float(getattr(r, "score", 0.0) or 0.0), 4),
+            })
+        return json.dumps({"ok": True, "n": len(res), "ms": round(ms, 1), "items": items},
+                          ensure_ascii=False)
+    except Exception as exc:  # noqa: BLE001 —— 探针本身绝不许把自检搞崩
+        return json.dumps({"ok": False, "err": "%s: %s" % (type(exc).__name__, exc)},
+                          ensure_ascii=False)
+
+
 def ocr_probe() -> str:
     """BG-40 OCR 烟测：ppocronnx shim -> Kotlin OcrRuntime -> ONNX Runtime AAR。
 

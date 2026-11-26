@@ -12,7 +12,7 @@ from typing import List, Tuple
 
 import numpy as np
 
-from ..rec.predict_rec import _runtime
+from ppocronnx.rec.predict_rec import _runtime  # Chaquopy 下相对导入会抛 ValueError
 
 MODEL_ASSET = "ocr/ch_PP-OCRv3_det_infer.onnx"
 
