@@ -896,7 +896,10 @@ def det_probe() -> str:
         from ppocronnx.predict_system import TextSystem
 
         try:
-            font = ImageFont.load_default(size=40)
+            try:
+                font = ImageFont.load_default(size=40)
+            except TypeError:  # 老 PIL 无 size 形参
+                font = ImageFont.load_default()
         except TypeError:  # 老 PIL 无 size 形参
             font = ImageFont.load_default()
         img = Image.new("RGB", (600, 240), (255, 255, 255))
@@ -916,11 +919,21 @@ def det_probe() -> str:
                 "text": getattr(r, "ocr_text", None) or str(r),
                 "score": round(float(getattr(r, "score", 0.0) or 0.0), 4),
             })
-        for k in ("pre", "marshal", "run", "post", "rec"):
+        # 32×32 极小输入对照：区分「固定开销/编组」与「算子」
+        tiny = np.full((32, 32, 3), 255, dtype=np.uint8)
+        seg_tiny = {}
+        t1 = time.time()
+        ts.detect_and_ocr(tiny, drop_score=0.3, timing=seg_tiny)
+        ms_tiny = (time.time() - t1) * 1000.0
+        for k in list(seg_tiny):
+            if isinstance(seg_tiny[k], float):
+                seg_tiny[k] = round(seg_tiny[k], 1)
+        for k in ("pre", "marshal", "run", "unmarshal", "post", "rec"):
             if k in timing:
                 timing[k] = round(float(timing[k]), 1)
         return json.dumps({"ok": True, "n": len(res), "ms": round(ms, 1),
-                           "seg": timing, "items": items}, ensure_ascii=False)
+                           "seg": timing, "tiny": {"ms": round(ms_tiny, 1), "seg": seg_tiny},
+                           "items": items}, ensure_ascii=False)
     except Exception as exc:  # noqa: BLE001 —— 探针本身绝不许把自检搞崩
         return json.dumps({"ok": False, "err": "%s: %s" % (type(exc).__name__, exc)},
                           ensure_ascii=False)
