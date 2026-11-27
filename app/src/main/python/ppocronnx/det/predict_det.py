@@ -133,7 +133,14 @@ class TextDetector(object):
         if timing is not None:
             timing["run"] = (time.perf_counter() - _t2) * 1000.0
             _t3 = time.perf_counter()
-        prob = np.asarray(list(raw), dtype=np.float32).reshape(nh, nw)
+        # 出向编组单独立段（评审 ③：原先被算进 post）
+        arr = np.asarray(raw, dtype=np.float32)
+        if arr.size != nh * nw:
+            arr = np.asarray(list(raw), dtype=np.float32)   # 回落：逐元素反编组
+        prob = arr.reshape(nh, nw)
+        if timing is not None:
+            timing["unmarshal"] = (time.perf_counter() - _t3) * 1000.0
+            _t4 = time.perf_counter()
 
         mask = prob > self.bin_thr
         f = DOWNSCALE
@@ -158,7 +165,7 @@ class TextDetector(object):
                 continue
             out.append((x0, y0, x1, y1))
         if timing is not None:
-            timing["post"] = (time.perf_counter() - _t3) * 1000.0
+            timing["post"] = (time.perf_counter() - _t4) * 1000.0
             timing["det_in"] = "%dx%d" % (nw, nh)
             timing["boxes"] = len(out)
         return out
