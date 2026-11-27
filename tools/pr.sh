@@ -24,8 +24,8 @@ need_git() {
 }
 
 load_token() {
-    [ -r "$CRED" ] || return 1
-    TOKEN=$(sed -E 's#.*:([^@]+)@.*#\1#' "$CRED")
+    # 用 git 自己的凭据接口解析（兼容 https://u:t@host 与 credential-store 两种格式）
+    TOKEN=$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill 2>/dev/null         | sed -n 's/^password=//p' | tr -d '\r\n')
     [ -n "${TOKEN:-}" ] && export GH_TOKEN="$TOKEN"
 }
 
