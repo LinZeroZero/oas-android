@@ -54,3 +54,13 @@ mutation($id: ID!){ markPullRequestReadyForReview(input:{pullRequestId:$id}){ pu
 ## 期望输出
 - 一段「状态表」：PR 号 / head sha / `mergeable_state` / CI 结论 / 分支是否已删
 - 失败的项给**命令 + 原始报错行**，不写"大概""可能"
+
+## PR 描述怎么写
+
+照 `.github/PULL_REQUEST_TEMPLATE.md` 填。本仓三条额外要求：
+
+1. **「验证」必填**：环境 → 命令 → 结果；性能类给 n 与分母（D-018），证据落 `docs/evidence/` 并给路径。
+2. **「AI 使用披露」必填**：哪些由 AI 生成、人核到什么程度。
+3. **不给审查方派作业**：不写判据、结论、期望值；「给审查方的说明」只写"哪里不显然、哪里可跳过"。
+
+GitHub 操作优先级：**`gh`（已装 2.106.0）> Operit `github` 包 > 手搓 `urllib`**。
