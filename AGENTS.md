@@ -7,10 +7,10 @@
 
 ## 1. 角色边界（谁都不能越位）
 - **执行位 = 主 AI**：仓库所有文件、`git commit/push`、开 PR、合并，全由主 AI 做；写完不自评。
-- **审查位 = 唯一子会话（`OAS-D2`，`0ef69b6e…`）**：只读命令、结论、`/tmp/outbox/*.md`；不得写仓库、`git add/commit/switch`、动设备。
+- **审查方 = 用户指定的唯一评审对话**（不写死 chat_id；换对话即换审查方）：只读命令、结论、`/tmp/outbox/*.md`；不得写仓库、`git add/commit/switch`、动设备。
 - **必审（改产物/门禁/规矩）**：`app/` `poc/` `tools/` `vendor/` `patches/` `.github/` `.githooks/` `dist/`、`gradle*` `*.gradle.kts` `setup_android_env.sh` 及任何构建产物；`AGENTS.md` `docs/WORKFLOW.md` `DECISIONS.md`。
 - **抽审（只描述状态/历史/证据）**：`PROGRESS.md` `docs/BACKLOG.md` `README.md` `CHANGELOG.md` `THIRD_PARTY_NOTICES.md` `.gitignore` `LICENSE` `docs/(HANDOFF.md|handoff/*|evidence/*|research/*|reviews/*|adr/*)`（类正则，非 glob）；不阻塞合并，但须 gate 机器判据（BG-38）+ 每 5 单全查一次。
-- **顺序（C 模式）：改完 → 开 draft PR → CI + 审查位审 → PASS → 转正式 → 用户签发 → 合**；未 PASS 不得转正式、不得合入 main；主 AI 不得自批。
+- **顺序（C 模式）：改完 → 开 draft PR → CI + 审查位审 → PASS → 转正式 → 用户签发 → 合**；未 PASS 不得转正式、不得合入 main；**主 AI 不自评、不自批**。
 - **并发 ≤2**：主 AI + 1 个审查位（按当场 `free`/`loadavg` 复核）。
 
 ## 2. 技术硬约束（改了大概率连锁崩）
@@ -24,11 +24,11 @@
 
 ## 3. 检索纪律（先定位，后读）
 
-- **先定位再读**：要「哪里有」用 `grep -rn` / `find` 出清单，不读全文；要读只读命中行 **±30 行**（`read_file_part`）；**单次进上下文的原文 ≤400 行，超了只回「行号区间 + 摘要 + 路径」，不回全文**。
-- **输出先落文件**：命令输出写文件后 `grep` 关键行，不把原始日志搬进对话；`git` 一律 `git --no-pager … | cat`（裸 `git diff` 进 less 锁死会话）；`>>` 追加前先确认文件末尾有换行（否则新内容会拼到上一行）。
-- **无关键词可搜**的全局问题（架构、耦合）→ 交子会话读完只回结论，或先落一份说明文件。
-- **同一工具连失败 2 次就换路**（例：`visit_web` 拉大文件返回 null → `curl` 落盘再 grep）。
-- **核对非当前分支内容用 `git show <branch>:<path>`**，别读工作区文件（曾误判 3 次）
+- **先定位再读**：要「哪里有」用 `grep -rn` / `find` 出清单，不读全文；要读只读命中行 **±30 行**（`read_file_part`）。
+- **输出先落文件**：命令输出写文件后 `grep` 关键行，不把原始日志搬进对话；`>>` 追加前先确认文件末尾有换行。
+- **`git` 一律 `git --no-pager … | cat`**（裸 `git diff` 进 less 锁死会话）。
+- **外部资料引用**：引用仓外事实（公司规范、算法结论、上游源码行为）必须给 URL 或当场抓原文；抓不到/没抓就标 `TODO(未核)`，不得写成结论。
+- **核对非当前分支内容用 `git show <branch>:<path>`**，别读工作区文件（曾误判 3 次）。
 
 ## 4. 流程硬约束
 
