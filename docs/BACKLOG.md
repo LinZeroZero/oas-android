@@ -57,6 +57,10 @@
 - [x] **BG-45 CI 提交规范差异**：CI 比本地 `gate.sh` 多一条 Conventional Commits 检查。**已治本**（`fix/gate-no-merges`：`git rev-list --no-merges`，按对象类型豁免 merge —— 同时堵住「`Merge …` 开头的普通提交可绕过」的反向漏洞）；`WORKFLOW §3` 描述已同步（2026-11-25）
 - [x] **BG-46 draft PR 转正通道**：REST `PATCH draft:false` 返回 200 但静默不生效；须 GraphQL `markPullRequestReadyForReview`（用 `node_id`）；已落 `docs/WORKFLOW.md §5`（2026-11-25）
 - [x] **BG-47 AGENTS 余量告急**：46 行 / 5,057 B（上限 50 / 5,120，仅余 63 B）；任何新增前必须先删一条（D-015）；「杀自起后台进程」自查命令已补（`pgrep -f 'logcat -s'`）；余量重算：`wc -l -c AGENTS.md` 现查
+- [ ] **BG-48 wheel 检查脚本（tools/ 下）+ CHAQUOPY 文档**：查依赖能否进 APK（cp313/arm64 有无轮子）；把 `import java.io` 不成立、`assets.open()` 是 Java 流、相对导入 beyond top-level、`module/ocr/**` 被 exclude 等坑写成文档。**触发**：下次因打包失败卡住时
+- [ ] **BG-49 OAS 模块烟测脚本（tools/ 下）**：OAS `module/*` 逐个 import → 出「可跑 / 缺哪个包」矩阵，把"全功能跑在安卓端"变成可度量。**触发**：`module/device` 解禁前
+- [ ] **BG-50 真机诊断脚本（tools/ 下）**：流式 logcat 落盘、ANR/tombstone/meminfo/cpufreq、`perfetto`/`simpleperf` 采样（两者设备自带，已验证）。**触发**：下次要定位性能/崩溃时
+
 ## 三、设备侧隐患（P2）
 
 - [ ] **BG-06 `screen_off_timeout=1800000`（30 分钟）疑似被改坏未还原**
@@ -202,6 +206,9 @@
   - **观测口径修正**：判「屏还在不在」不能直接拿 `dumpsys display | grep -c 'DisplayInfo{"oas"'` 跟 1 比 —— 运行期实测为 **2**（同一屏打印 `mBaseDisplayInfo` + `mOverrideDisplayInfo` 两行），**按 displayId 去重后才是 1**；清场后应为 0
   - **未开**：C-1（flags 重打 jar，**押后**且必须从头重做 —— 上一棒越线做过已整体回滚，未评审未合并）、C-3（预览与主屏共存，含与 BG-22 `setSurface(null)` 的冲突）
 - 归属：主 AI（立项/排期/验收）→ 写手（实现）→ D（评审）
+
+- [ ] **BG-51 本地模型可行性评估**：手机空闲内存仅 ~0.5 GB（1.5B Q4 需 ≥1.2 GB）；NPU 走 NNAPI 对 LLM 算子覆盖差、APU 需厂商栈。**触发/做法**：先用 OCR（CNN）开 `useNnapi` 测一次，再决定是否评估 LLM
+- [ ] **BG-52 OAS App UI 主题化（和风）+ 图标**：配色（墨底/朱红/金）、明朝体（开源思源宋体/霞鹜文楷）、自适应图标三套尺寸；**图标版权**：官方角色形象不可入库，走"描述性提示词生成原创 和风Q版"或本地 `.gitignore` 覆盖。**触发**：功能主线稳定后
 
 ## 八、L2 引擎接入（P0）
 
