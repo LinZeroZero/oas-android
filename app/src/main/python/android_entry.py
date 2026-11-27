@@ -896,7 +896,10 @@ def det_probe() -> str:
         from ppocronnx.predict_system import TextSystem
 
         try:
-            font = ImageFont.load_default(size=40)
+            try:
+                font = ImageFont.load_default(size=40)
+            except TypeError:  # 老 PIL 无 size 形参
+                font = ImageFont.load_default()
         except TypeError:  # 老 PIL 无 size 形参
             font = ImageFont.load_default()
         img = Image.new("RGB", (600, 240), (255, 255, 255))
